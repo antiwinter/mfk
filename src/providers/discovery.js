@@ -79,8 +79,10 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
 
 export async function detectProviderConfiguration({ baseProvider, key }) {
   const attempts = [];
+  const reporter = baseProvider.reporter;
 
   for (const type of DETECTION_PRIORITY) {
+    reporter?.onStyleStart?.(type);
     const provider = {
       ...baseProvider,
       type,
@@ -89,6 +91,11 @@ export async function detectProviderConfiguration({ baseProvider, key }) {
 
     try {
       const discovery = await discoverProviderModels(provider);
+      reporter?.onModelListSuccess?.({
+        type,
+        latencyMs: discovery.latencyMs,
+        modelCount: discovery.models.length,
+      });
       const probeCandidates = selectProbeModels(discovery.models);
 
       if (probeCandidates.length === 0) {
@@ -97,13 +104,27 @@ export async function detectProviderConfiguration({ baseProvider, key }) {
           status: 'failed',
           reason: 'No concrete model available for probe',
         });
+        reporter?.onStyleFailure?.({
+          type,
+          reason: 'No concrete model available for probe',
+        });
         continue;
       }
 
       const probeFailures = [];
       for (const probeModel of probeCandidates) {
         try {
+          reporter?.onProbeStart?.({
+            type,
+            model: probeModel,
+          });
           const probe = await probeProviderModel(provider, discovery.key, probeModel);
+          reporter?.onStyleSuccess?.({
+            type,
+            probeModel,
+            listLatencyMs: discovery.latencyMs,
+            probeLatencyMs: probe.latencyMs,
+          });
           return {
             provider: {
               ...provider,
@@ -119,19 +140,33 @@ export async function detectProviderConfiguration({ baseProvider, key }) {
             attempts,
           };
         } catch (error) {
+          reporter?.onProbeFailure?.({
+            type,
+            model: probeModel,
+            reason: error.message,
+          });
           probeFailures.push(`${probeModel}: ${error.message}`);
         }
       }
 
+      const reason = probeFailures.join(' | ');
       attempts.push({
         type,
         status: 'failed',
-        reason: probeFailures.join(' | '),
+        reason,
+      });
+      reporter?.onStyleFailure?.({
+        type,
+        reason,
       });
     } catch (error) {
       attempts.push({
         type,
         status: 'failed',
+        reason: error.message,
+      });
+      reporter?.onStyleFailure?.({
+        type,
         reason: error.message,
       });
     }

@@ -31,8 +31,19 @@ export function registerAddCommand(program) {
         value: apiKey,
         priority: 100,
       };
+      const reporter = createDetectionReporter();
+
+      console.log(`provider: ${existingProvider?.name ?? probeProvider.name}`);
+      console.log(`base_url: ${baseUrl}`);
+      console.log(`key: ${tempKey.name}`);
+      console.log('source: live_api');
+      console.log('detecting_api_style: start');
+
       const detected = await detectProviderConfiguration({
-        baseProvider: probeProvider,
+        baseProvider: {
+          ...probeProvider,
+          reporter,
+        },
         key: tempKey,
       });
       const models = detected.models;
@@ -49,11 +60,7 @@ export function registerAddCommand(program) {
       }
 
       await saveConfig(configPath, config);
-      console.log(`provider: ${existingProvider?.name ?? probeProvider.name}`);
       console.log(`type: ${detected.type}`);
-      console.log(`base_url: ${baseUrl}`);
-      console.log(`key: ${tempKey.name}`);
-      console.log(`source: live_api`);
       console.log(`model_list_latency_ms: ${detected.listLatencyMs}`);
       console.log(`probe_model: ${detected.probeModel}`);
       console.log(`probe_prompt: ${detected.prompt}`);
@@ -90,4 +97,32 @@ function createKeyName(keys) {
   }
 
   return name;
+}
+
+function createDetectionReporter() {
+  return {
+    onStyleStart(type) {
+      console.log(`trying_style: ${type}`);
+    },
+    onModelListSuccess(event) {
+      console.log(`style_model_list: ${event.type} ok (${event.modelCount} models, ${event.latencyMs} ms)`);
+    },
+    onProbeStart(event) {
+      console.log(`style_probe: ${event.type} -> ${event.model}`);
+    },
+    onProbeFailure(event) {
+      console.log(`style_probe_fail: ${event.type} -> ${event.model} (${summarizeReason(event.reason)})`);
+    },
+    onStyleFailure(event) {
+      console.log(`style_result: ${event.type} fail (${summarizeReason(event.reason)})`);
+    },
+    onStyleSuccess(event) {
+      console.log(`style_result: ${event.type} pass (model ${event.probeModel}, probe ${event.probeLatencyMs} ms)`);
+    },
+  };
+}
+
+function summarizeReason(reason) {
+  const singleLine = String(reason ?? 'unknown error').replace(/\s+/g, ' ').trim();
+  return singleLine.length > 180 ? `${singleLine.slice(0, 177)}...` : singleLine;
 }
