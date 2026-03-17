@@ -1,0 +1,20 @@
+{
+  "name": "mfk",
+  "version": "0.1.0",
+  "description": "Multi-provider LLM key router with local virtual keys",
+  "type": "module",
+  "bin": {
+    "mfk": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node ./src/index.js",
+    "test": "node --test tests/**/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "fastify": "^5.2.1"
+  }
+}
