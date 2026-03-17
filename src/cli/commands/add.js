@@ -1,5 +1,5 @@
 import { loadConfig, saveConfig } from '../../config/store.js';
-import { openAiCompatibleProvider } from '../../providers/openaiCompatible.js';
+import { discoverProviderModels } from '../../providers/discovery.js';
 
 export function registerAddCommand(program) {
   program
@@ -33,7 +33,11 @@ export function registerAddCommand(program) {
         value: apiKey,
         priority: 100,
       };
-      const models = await openAiCompatibleProvider.listModels(probeProvider, tempKey);
+      const probeResult = await discoverProviderModels({
+        ...probeProvider,
+        keys: [tempKey],
+      });
+      const models = probeResult.models;
 
       if (existingProvider) {
         existingProvider.keys.push(tempKey);
@@ -48,6 +52,8 @@ export function registerAddCommand(program) {
       console.log(`provider: ${existingProvider?.name ?? probeProvider.name}`);
       console.log(`base_url: ${baseUrl}`);
       console.log(`key: ${tempKey.name}`);
+      console.log(`source: live_api`);
+      console.log(`latency_ms: ${probeResult.latencyMs}`);
       console.log(`models: ${models.join(', ') || '(none reported)'}`);
     });
 }

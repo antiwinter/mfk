@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { uniqueModels } from '../providers/shared.js';
 
 const DEFAULT_SERVER = {
   host: '127.0.0.1',
@@ -54,7 +55,7 @@ function normalizeProvider(provider, providerIndex) {
     quotaReset: provider.quotaReset ?? 'daily',
     failureReset: provider.failureReset ?? 'hourly',
     headers: provider.headers ?? {},
-    models: Array.isArray(provider.models) ? provider.models : [],
+    models: Array.isArray(provider.models) ? uniqueModels(provider.models).sort(compareText) : [],
     keys,
   };
 }
@@ -103,4 +104,8 @@ export function resolveDatabasePath(configDir, dbPath) {
 
 function stripTrailingSlash(value) {
   return value.replace(/\/$/, '');
+}
+
+function compareText(left, right) {
+  return left.localeCompare(right);
 }

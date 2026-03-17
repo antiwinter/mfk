@@ -4,6 +4,7 @@ import {
   normalizeOpenAiRequest,
   requestJson,
   toOpenAiResponse,
+  uniqueModels,
 } from './shared.js';
 
 export const googleProvider = {
@@ -17,7 +18,7 @@ export const googleProvider = {
     });
 
     return Array.isArray(data?.models)
-      ? data.models.map((entry) => entry.name?.replace(/^models\//, '')).filter(Boolean)
+      ? uniqueModels(data.models.map((entry) => entry.name?.replace(/^models\//, '')))
       : [];
   },
   async invoke(provider, key, request) {

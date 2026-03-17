@@ -1,4 +1,4 @@
-import { normalizeOpenAiRequest, requestJson, toOpenAiResponse } from './shared.js';
+import { normalizeOpenAiRequest, requestJson, toOpenAiResponse, uniqueModels } from './shared.js';
 
 export const openAiCompatibleProvider = {
   type: 'openai-compatible',
@@ -8,7 +8,9 @@ export const openAiCompatibleProvider = {
       headers: buildHeaders(provider, key.value),
     });
 
-    return Array.isArray(data?.data) ? data.data.map((entry) => entry.id).filter(Boolean) : [];
+    return Array.isArray(data?.data)
+      ? uniqueModels(data.data.map((entry) => entry.id))
+      : [];
   },
   async invoke(provider, key, request) {
     const url = `${provider.baseUrl}/v1/chat/completions`;

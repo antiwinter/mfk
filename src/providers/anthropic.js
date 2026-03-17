@@ -4,6 +4,7 @@ import {
   normalizeOpenAiRequest,
   requestJson,
   toOpenAiResponse,
+  uniqueModels,
 } from './shared.js';
 
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -16,7 +17,9 @@ export const anthropicProvider = {
       headers: buildHeaders(provider, key.value),
     });
 
-    return Array.isArray(data?.data) ? data.data.map((entry) => entry.id).filter(Boolean) : [];
+    return Array.isArray(data?.data)
+      ? uniqueModels(data.data.map((entry) => entry.id))
+      : [];
   },
   async invoke(provider, key, request) {
     const url = `${provider.baseUrl}/v1/messages`;

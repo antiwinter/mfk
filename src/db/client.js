@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import Database from 'better-sqlite3';
 
 export function createDatabase(dbPath) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new DatabaseSync(dbPath);
-  db.exec('PRAGMA journal_mode = WAL');
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
   initialize(db);
 
   const statements = {

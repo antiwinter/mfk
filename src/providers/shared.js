@@ -19,6 +19,10 @@ export async function requestJson(url, options = {}) {
   return body;
 }
 
+export function uniqueModels(models) {
+  return [...new Set((models ?? []).filter(Boolean))];
+}
+
 export function createUpstreamError(url, statusCode, body) {
   const message = extractErrorMessage(body) ?? `Upstream request failed with status ${statusCode}`;
   const type = classifyErrorType(statusCode, body, message);
