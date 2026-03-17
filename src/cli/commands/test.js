@@ -1,24 +1,24 @@
-import { loadConfig } from '../../config/store.js';
+import { findProvider, formatProviderRef, loadConfig } from '../../config/store.js';
 import { discoverProviderModels, probeProviderModel } from '../../providers/discovery.js';
 
 export function registerTestCommand(program) {
   program
-    .command('test <providerName> [model]')
+    .command('test <providerRef> [model]')
     .description('Test provider connectivity, report discovered models, and optionally probe one model')
     .action(async (...args) => {
-      const providerName = args[0];
+      const providerRef = args[0];
       const model = args[1];
       const command = args.at(-1);
       const configPath = command.optsWithGlobals().config;
       const { config } = await loadConfig(configPath);
-      const provider = config.providers.find((entry) => entry.name === providerName);
+      const provider = findProvider(config, providerRef);
 
       if (!provider) {
-        throw new Error(`Unknown provider: ${providerName}`);
+        throw new Error(`Unknown provider: ${providerRef}`);
       }
 
       if (provider.keys.length === 0) {
-        throw new Error(`Provider ${providerName} has no keys configured`);
+        throw new Error(`Provider ${providerRef} has no keys configured`);
       }
       const result = await discoverProviderModels(provider);
 
@@ -34,9 +34,9 @@ export function registerTestCommand(program) {
         return;
       }
 
-      console.log(`provider: ${provider.name}`);
+  console.log(`provider: ${formatProviderRef(provider)}`);
+  console.log(`url: ${provider.baseUrl}`);
       console.log(`type: ${provider.type}`);
-      console.log(`key: ${result.key.name}`);
       console.log(`status: ok`);
       console.log(`source: live_api`);
       console.log(`latency_ms: ${result.latencyMs}`);

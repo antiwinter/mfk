@@ -29,14 +29,14 @@ export async function routeRequest({ config, db, request, username, virtualKey }
     try {
       const adapter = getProviderAdapter(candidate.provider.type);
       const response = await adapter.invoke(candidate.provider, candidate.key, request);
-      db.markSuccess(candidate.provider.name, candidate.key.name);
+      db.markSuccess(candidate.provider.id, candidate.key.name);
       db.logRequest({
         requestedAt,
         username,
         virtualKey,
         requestModel: request.model,
         requestedProvider: request.provider,
-        selectedProvider: candidate.provider.name,
+        selectedProvider: candidate.provider.id,
         selectedKey: candidate.key.name,
         status: 'success',
         latencyMs: Date.now() - startedAt,
@@ -49,7 +49,7 @@ export async function routeRequest({ config, db, request, username, virtualKey }
         ? computeNextBoundary(errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset)
         : null;
 
-      db.markFailure(candidate.provider.name, candidate.key.name, {
+      db.markFailure(candidate.provider.id, candidate.key.name, {
         disabledUntil,
         reason: errorType,
         message: error.message,
@@ -60,7 +60,7 @@ export async function routeRequest({ config, db, request, username, virtualKey }
         virtualKey,
         requestModel: request.model,
         requestedProvider: request.provider,
-        selectedProvider: candidate.provider.name,
+        selectedProvider: candidate.provider.id,
         selectedKey: candidate.key.name,
         status: 'failed',
         errorType,
@@ -85,7 +85,7 @@ function selectCandidates(config, db, request) {
   const candidates = [];
 
   for (const provider of config.providers) {
-    if (requestedProvider && provider.name !== requestedProvider && provider.type !== requestedProvider) {
+    if (requestedProvider && !matchesProviderSelector(provider, requestedProvider)) {
       continue;
     }
 
@@ -95,7 +95,7 @@ function selectCandidates(config, db, request) {
     }
 
     for (const key of provider.keys) {
-      const state = db.getKeyState(provider.name, key.name);
+      const state = db.getKeyState(provider.id, key.name);
       if (isCooldownActive(state?.disabled_until, now)) {
         continue;
       }
@@ -119,4 +119,12 @@ function selectCandidates(config, db, request) {
 
 function shouldDisable(errorType) {
   return errorType === 'quota' || errorType === 'retryable' || errorType === 'auth';
+}
+
+function matchesProviderSelector(provider, selector) {
+  return selector === provider.type
+    || selector === provider.baseUrl
+    || selector === provider.apiKey
+    || selector === provider.id
+    || selector === String(provider.order + 1);
 }

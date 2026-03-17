@@ -4,7 +4,7 @@
 
 ## Features
 
-- Reads providers, models, keys, and routing policy from a JSON config file.
+- Reads providers, models, and routing policy from a JSON config file keyed by upstream API key.
 - Routes by model, with optional explicit provider selection using the `provider` request field or `x-mfk-provider` header.
 - Uses priority-based failover across keys and providers.
 - Applies cooldown policies for quota failures and other retryable failures.
@@ -30,26 +30,22 @@ The default config file is `mfk.config.json`.
   "database": {
     "path": "./mfk.sqlite"
   },
-  "providers": [
-    {
-      "name": "anthropic-main",
+  "providers": {
+    "your-secret": {
+      "url": "https://api.anthropic.com",
       "type": "anthropic",
-      "baseUrl": "https://api.anthropic.com",
-      "priority": 10,
-      "quotaReset": "daily",
-      "failureReset": "hourly",
-      "models": ["claude-sonnet-4-5"],
-      "keys": [
-        {
-          "name": "key-1",
-          "value": "your-secret",
-          "priority": 10
-        }
-      ]
+      "models": ["claude-sonnet-4-5"]
     }
-  ]
+  }
 }
 ```
+
+Provider order is the routing priority. The first provider entry has the highest priority.
+
+Default values are omitted from the saved config:
+
+- `quotaReset` defaults to `daily`
+- `failureReset` defaults to `hourly`
 
 Provider `type` values:
 
@@ -70,10 +66,10 @@ Start the local gateway:
 mfk serve
 ```
 
-Test a provider and list available models:
+Test a provider and list available models. `providerRef` can be the 1-based provider index, the provider URL, or the exact API key:
 
 ```bash
-mfk test provider-name
+mfk test 1
 ```
 
 Add a provider by base URL and key. `mfk` auto-detects the API style in priority order: `anthropic`, `openai-compatible`, then `google`.
@@ -94,7 +90,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "claude-sonnet-4-5",
-    "provider": "anthropic-main",
+    "provider": "1",
     "messages": [
       {"role": "user", "content": "Hello"}
     ]
