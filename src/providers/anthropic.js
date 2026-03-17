@@ -1,5 +1,8 @@
 import {
   collectSystemPrompt,
+  emitEchoPrompt,
+  emitEchoResponse,
+  finalizeEcho,
   flattenMessageContent,
   normalizeOpenAiRequest,
   requestJson,
@@ -21,8 +24,9 @@ export const anthropicProvider = {
       ? uniqueModels(data.data.map((entry) => entry.id))
       : [];
   },
-  async invoke(provider, key, request) {
+  async invoke(provider, key, request, options = {}) {
     const url = `${provider.baseUrl}/v1/messages`;
+    emitEchoPrompt(options.echo, request);
     const systemPrompt = collectSystemPrompt(request.messages);
     const messages = request.messages
       .filter((message) => message.role !== 'system')
@@ -56,7 +60,7 @@ export const anthropicProvider = {
           .join('\n')
       : '';
 
-    return toOpenAiResponse({
+    const normalized = toOpenAiResponse({
       id: data?.id,
       model: data?.model ?? request.model,
       content: text,
@@ -66,6 +70,9 @@ export const anthropicProvider = {
         completionTokens: data?.usage?.output_tokens,
       },
     });
+    emitEchoResponse(options.echo, text);
+    finalizeEcho(options.echo);
+    return normalized;
   },
   normalizeRequest: normalizeOpenAiRequest,
 };

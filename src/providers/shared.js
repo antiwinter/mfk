@@ -19,6 +19,65 @@ export async function requestJson(url, options = {}) {
   return body;
 }
 
+export async function readJsonError(response, url) {
+  const rawText = await response.text();
+  const contentType = response.headers.get('content-type') ?? '';
+
+  let body = null;
+  if (rawText) {
+    if (contentType.includes('application/json')) {
+      body = JSON.parse(rawText);
+    } else {
+      body = { text: rawText };
+    }
+  }
+
+  throw createUpstreamError(url, response.status, body);
+}
+
+export function emitEchoPrompt(echo, request) {
+  if (!echo?.enabled || echo.promptWritten) {
+    return;
+  }
+
+  const prompt = extractEchoPrompt(request);
+  echo.write(`-> ${prompt}\n`);
+  echo.write('<< ');
+  echo.promptWritten = true;
+}
+
+export function emitEchoResponse(echo, text) {
+  if (!echo?.enabled || !text) {
+    return;
+  }
+
+  echo.write(text);
+  echo.responseWritten = true;
+}
+
+export function finalizeEcho(echo) {
+  if (!echo?.enabled || echo.finished) {
+    return;
+  }
+
+  if (!echo.responseWritten) {
+    echo.write('(empty response)');
+  }
+
+  echo.write('\n');
+  echo.finished = true;
+}
+
+export function createEchoOptions(overrides = {}) {
+  return {
+    enabled: Boolean(overrides.enabled),
+    write: overrides.write ?? ((text) => process.stdout.write(text)),
+    promptWritten: false,
+    responseWritten: false,
+    finished: false,
+  };
+}
+
 export function uniqueModels(models) {
   return [...new Set((models ?? []).filter(Boolean))];
 }
@@ -94,6 +153,14 @@ export function collectSystemPrompt(messages) {
     .map((message) => flattenMessageContent(message.content))
     .filter(Boolean)
     .join('\n\n');
+}
+
+function extractEchoPrompt(request) {
+  const userMessage = [...(request?.messages ?? [])]
+    .reverse()
+    .find((message) => message?.role === 'user');
+
+  return flattenMessageContent(userMessage?.content ?? '') || '(empty prompt)';
 }
 
 function classifyErrorType(statusCode, body, message) {

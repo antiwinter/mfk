@@ -1,5 +1,8 @@
 import {
   collectSystemPrompt,
+  emitEchoPrompt,
+  emitEchoResponse,
+  finalizeEcho,
   flattenMessageContent,
   normalizeOpenAiRequest,
   requestJson,
@@ -21,8 +24,9 @@ export const googleProvider = {
       ? uniqueModels(data.models.map((entry) => entry.name?.replace(/^models\//, '')))
       : [];
   },
-  async invoke(provider, key, request) {
+  async invoke(provider, key, request, options = {}) {
     const url = `${provider.baseUrl}/v1beta/models/${encodeURIComponent(request.model)}:generateContent?key=${encodeURIComponent(key.value)}`;
+    emitEchoPrompt(options.echo, request);
     const systemPrompt = collectSystemPrompt(request.messages);
     const contents = request.messages
       .filter((message) => message.role !== 'system')
@@ -63,7 +67,7 @@ export const googleProvider = {
       ? candidate.content.parts.map((part) => part.text ?? '').join('\n')
       : '';
 
-    return toOpenAiResponse({
+    const normalized = toOpenAiResponse({
       model: request.model,
       content: text,
       finishReason: candidate?.finishReason ?? 'stop',
@@ -73,6 +77,9 @@ export const googleProvider = {
         totalTokens: data?.usageMetadata?.totalTokenCount,
       },
     });
+    emitEchoResponse(options.echo, text);
+    finalizeEcho(options.echo);
+    return normalized;
   },
   normalizeRequest: normalizeOpenAiRequest,
 };

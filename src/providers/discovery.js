@@ -1,5 +1,5 @@
 import { getProviderAdapter } from './index.js';
-import { uniqueModels } from './shared.js';
+import { createEchoOptions, uniqueModels } from './shared.js';
 
 export async function discoverProviderModels(provider) {
   if (!provider?.keys?.length) {
@@ -28,10 +28,13 @@ export async function discoverProviderModels(provider) {
   throw new Error(`Provider test failed: ${lastError?.message ?? 'unknown error'}`);
 }
 
-export async function probeProviderModel(provider, key, model) {
+export async function probeProviderModel(provider, key, model, handlers = {}) {
   const adapter = getProviderAdapter(provider.type);
   const startedAt = Date.now();
-  const response = await adapter.invoke(provider, key, {
+  const probe = {
+    prompt: 'hello, tell me your model name',
+  };
+  const request = {
     model,
     temperature: 0,
     maxTokens: 64,
@@ -42,14 +45,33 @@ export async function probeProviderModel(provider, key, model) {
       },
       {
         role: 'user',
-        content: 'Return exactly: MFK model probe ok',
+        content: probe.prompt,
       },
     ],
-  });
+  };
+  let response;
+  const echo = createEchoOptions(handlers.echo);
+
+  if (adapter.invokeStream) {
+    try {
+      response = await adapter.invokeStream(provider, key, request, {
+        echo,
+      });
+    } catch (error) {
+      if (echo.responseWritten || !adapter.invoke) {
+        throw error;
+      }
+
+      response = await adapter.invoke(provider, key, request, { echo });
+    }
+  } else {
+    response = await adapter.invoke(provider, key, request, { echo });
+  }
 
   return {
     response,
     latencyMs: Date.now() - startedAt,
+    prompt: probe.prompt,
   };
 }
 
