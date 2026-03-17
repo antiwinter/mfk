@@ -1,10 +1,10 @@
 import { loadConfig, saveConfig } from '../../config/store.js';
-import { discoverProviderModels } from '../../providers/discovery.js';
+import { detectProviderConfiguration } from '../../providers/discovery.js';
 
 export function registerAddCommand(program) {
   program
     .command('add <urlPort> <key>')
-    .description('Add an OpenAI-compatible provider and import its model list')
+    .description('Add a provider by auto-detecting its API style and importing its model list')
     .option('--name <name>', 'Override the generated provider name')
     .action(async (...args) => {
       const [urlPort, apiKey, options] = args;
@@ -12,9 +12,7 @@ export function registerAddCommand(program) {
       const configPath = command.optsWithGlobals().config;
       const { config } = await loadConfig(configPath);
       const baseUrl = normalizeBaseUrl(urlPort);
-      const existingProvider = config.providers.find(
-        (provider) => provider.type === 'openai-compatible' && provider.baseUrl === baseUrl,
-      );
+      const existingProvider = config.providers.find((provider) => provider.baseUrl === baseUrl);
 
       const probeProvider = existingProvider ?? {
         name: options.name ?? createProviderName(baseUrl, config.providers),
@@ -33,16 +31,18 @@ export function registerAddCommand(program) {
         value: apiKey,
         priority: 100,
       };
-      const probeResult = await discoverProviderModels({
-        ...probeProvider,
-        keys: [tempKey],
+      const detected = await detectProviderConfiguration({
+        baseProvider: probeProvider,
+        key: tempKey,
       });
-      const models = probeResult.models;
+      const models = detected.models;
 
       if (existingProvider) {
+        existingProvider.type = detected.type;
         existingProvider.keys.push(tempKey);
         existingProvider.models = models;
       } else {
+        probeProvider.type = detected.type;
         probeProvider.models = models;
         probeProvider.keys.push(tempKey);
         config.providers.push(probeProvider);
@@ -50,10 +50,14 @@ export function registerAddCommand(program) {
 
       await saveConfig(configPath, config);
       console.log(`provider: ${existingProvider?.name ?? probeProvider.name}`);
+      console.log(`type: ${detected.type}`);
       console.log(`base_url: ${baseUrl}`);
       console.log(`key: ${tempKey.name}`);
       console.log(`source: live_api`);
-      console.log(`latency_ms: ${probeResult.latencyMs}`);
+      console.log(`model_list_latency_ms: ${detected.listLatencyMs}`);
+      console.log(`probe_model: ${detected.probeModel}`);
+      console.log(`probe_prompt: ${detected.prompt}`);
+      console.log(`probe_latency_ms: ${detected.probeLatencyMs}`);
       console.log(`models: ${models.join(', ') || '(none reported)'}`);
     });
 }

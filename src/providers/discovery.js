@@ -1,6 +1,8 @@
 import { getProviderAdapter } from './index.js';
 import { createEchoOptions, uniqueModels } from './shared.js';
 
+const DETECTION_PRIORITY = ['anthropic', 'openai-compatible', 'google'];
+
 export async function discoverProviderModels(provider) {
   if (!provider?.keys?.length) {
     throw new Error(`Provider ${provider?.name ?? 'unknown'} has no keys configured`);
@@ -75,6 +77,117 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
   };
 }
 
+export async function detectProviderConfiguration({ baseProvider, key }) {
+  const attempts = [];
+
+  for (const type of DETECTION_PRIORITY) {
+    const provider = {
+      ...baseProvider,
+      type,
+      keys: [key],
+    };
+
+    try {
+      const discovery = await discoverProviderModels(provider);
+      const probeCandidates = selectProbeModels(discovery.models);
+
+      if (probeCandidates.length === 0) {
+        attempts.push({
+          type,
+          status: 'failed',
+          reason: 'No concrete model available for probe',
+        });
+        continue;
+      }
+
+      const probeFailures = [];
+      for (const probeModel of probeCandidates) {
+        try {
+          const probe = await probeProviderModel(provider, discovery.key, probeModel);
+          return {
+            provider: {
+              ...provider,
+              models: discovery.models,
+            },
+            key: discovery.key,
+            models: discovery.models,
+            type,
+            listLatencyMs: discovery.latencyMs,
+            probeLatencyMs: probe.latencyMs,
+            probeModel,
+            prompt: probe.prompt,
+            attempts,
+          };
+        } catch (error) {
+          probeFailures.push(`${probeModel}: ${error.message}`);
+        }
+      }
+
+      attempts.push({
+        type,
+        status: 'failed',
+        reason: probeFailures.join(' | '),
+      });
+    } catch (error) {
+      attempts.push({
+        type,
+        status: 'failed',
+        reason: error.message,
+      });
+    }
+  }
+
+  const summary = attempts.map((attempt) => `${attempt.type}: ${attempt.reason}`).join('; ');
+  throw new Error(`Unable to detect provider API style. ${summary}`);
+}
+
 function compareText(left, right) {
   return left.localeCompare(right);
+}
+
+function selectProbeModels(models) {
+  const concreteModels = models.filter((model) => !model.includes('*'));
+
+  return concreteModels
+    .slice()
+    .sort((left, right) => compareProbeRank(left, right) || compareText(left, right))
+    .slice(0, 5);
+}
+
+function compareProbeRank(left, right) {
+  return getProbeRank(left) - getProbeRank(right);
+}
+
+function getProbeRank(model) {
+  const normalized = model.toLowerCase();
+
+  if (normalized.includes('sonnet-4-6')) {
+    return 0;
+  }
+
+  if (normalized.includes('sonnet-4-5')) {
+    return 1;
+  }
+
+  if (normalized.includes('sonnet-4')) {
+    return 2;
+  }
+
+  if (normalized.includes('haiku-4-5')) {
+    return 3;
+  }
+
+  if (normalized.includes('haiku')) {
+    return 4;
+  }
+
+  if (normalized.includes('opus-4-6')) {
+    return 5;
+  }
+
+  if (normalized.includes('opus')) {
+    return 6;
+  }
+
+  return 50;
 }

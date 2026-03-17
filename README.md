@@ -76,7 +76,7 @@ Test a provider and list available models:
 mfk test provider-name
 ```
 
-Add an OpenAI-compatible provider by base URL and key:
+Add a provider by base URL and key. `mfk` auto-detects the API style in priority order: `anthropic`, `openai-compatible`, then `google`.
 
 ```bash
 mfk add localhost:11434 my-secret-key
