@@ -9,8 +9,8 @@ import {
   uniqueModels,
 } from './shared.js';
 
-export const openAiCompatibleProvider = {
-  type: 'openai-compatible',
+export const openaiProvider = {
+  type: 'openai',
   async listModels(provider, key) {
     const url = `${provider.baseUrl}/v1/models`;
     const data = await requestJson(url, {

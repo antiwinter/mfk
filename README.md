@@ -49,7 +49,7 @@ Default values are omitted from the saved config:
 
 Provider `type` values:
 
-- `openai-compatible`
+- `openai`
 - `anthropic`
 - `google`
 
@@ -72,7 +72,7 @@ Test a provider and list available models. `providerRef` can be the 1-based prov
 mfk test 1
 ```
 
-Add a provider by base URL and key. `mfk` auto-detects the API style in priority order: `anthropic`, `openai-compatible`, then `google`.
+Add a provider by base URL and key. `mfk` auto-detects the API style in priority order: `anthropic`, `openai`, then `google`.
 
 ```bash
 mfk add localhost:11434 my-secret-key

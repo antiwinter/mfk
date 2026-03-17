@@ -16,7 +16,7 @@ export function registerAddCommand(program) {
       const probeProvider = existingProvider ?? buildRuntimeProvider({
         apiKey,
         baseUrl,
-        type: 'openai-compatible',
+        type: 'openai',
         models: [],
         order: config.providers.length,
       });

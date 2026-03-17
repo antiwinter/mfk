@@ -95,7 +95,7 @@ function normalizeProviderEntry(apiKey, provider, providerIndex) {
   return buildRuntimeProvider({
     apiKey,
     baseUrl,
-    type: provider.type,
+    type: normalizeProviderType(provider.type),
     quotaReset: provider.quotaReset,
     failureReset: provider.failureReset,
     models: provider.models,
@@ -107,7 +107,7 @@ export function buildRuntimeProvider({ apiKey, baseUrl, type, quotaReset, failur
   return {
     id: createProviderId(baseUrl, apiKey),
     apiKey,
-    type,
+    type: normalizeProviderType(type),
     baseUrl,
     order,
     priority: order,
@@ -188,7 +188,7 @@ function serializeConfig(config) {
 function serializeProvider(provider) {
   const serialized = {
     url: provider.baseUrl,
-    type: provider.type,
+    type: normalizeProviderType(provider.type),
     models: uniqueModels(provider.models).sort(compareText),
   };
 
@@ -223,4 +223,8 @@ function maskApiKey(apiKey) {
   }
 
   return `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}`;
+}
+
+function normalizeProviderType(type) {
+  return type === 'openai-compatible' ? 'openai' : type;
 }

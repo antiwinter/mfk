@@ -1,7 +1,7 @@
 import { getProviderAdapter } from './index.js';
 import { createEchoOptions, uniqueModels } from './shared.js';
 
-const DETECTION_PRIORITY = ['anthropic', 'openai-compatible', 'google'];
+const DETECTION_PRIORITY = ['anthropic', 'openai', 'google'];
 
 export async function discoverProviderModels(provider) {
   if (!provider?.keys?.length) {

@@ -1,9 +1,9 @@
 import { anthropicProvider } from './anthropic.js';
 import { googleProvider } from './google.js';
-import { openAiCompatibleProvider } from './openaiCompatible.js';
+import { openaiProvider } from './openai.js';
 
 const PROVIDERS = new Map([
-  [openAiCompatibleProvider.type, openAiCompatibleProvider],
+  [openaiProvider.type, openaiProvider],
   [anthropicProvider.type, anthropicProvider],
   [googleProvider.type, googleProvider],
 ]);
