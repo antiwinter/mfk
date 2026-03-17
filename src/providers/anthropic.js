@@ -100,6 +100,9 @@ export const anthropicProvider = {
     if (!contentType.includes('text/event-stream')) {
       const data = await response.json();
       const text = extractResponseText(data);
+      if (text) {
+        options.onText?.(text);
+      }
       emitEchoResponse(options.echo, text);
       finalizeEcho(options.echo);
       return toOpenAiResponse({
@@ -130,12 +133,12 @@ export const anthropicProvider = {
       buffer = events.pop() ?? '';
 
       for (const event of events) {
-        content += processStreamEvent(event, options.echo);
+        content += processStreamEvent(event, options);
       }
     }
 
     if (buffer.trim()) {
-      content += processStreamEvent(buffer, options.echo);
+      content += processStreamEvent(buffer, options);
     }
 
     finalizeEcho(options.echo);
@@ -175,7 +178,7 @@ function extractResponseText(data) {
     : '';
 }
 
-function processStreamEvent(event, echo) {
+function processStreamEvent(event, options) {
   const lines = event
     .split('\n')
     .map((line) => line.trim())
@@ -196,7 +199,8 @@ function processStreamEvent(event, echo) {
     const text = extractStreamText(data);
     if (text) {
       deltaText += text;
-      emitEchoResponse(echo, text);
+      options.onText?.(text);
+      emitEchoResponse(options.echo, text);
     }
   }
 

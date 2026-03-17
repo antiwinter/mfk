@@ -106,6 +106,7 @@ export const openaiProvider = {
           .join('\n');
 
         if (content) {
+          handlers.onText?.(content);
           emitEchoResponse(handlers.echo, content);
         }
 
@@ -158,6 +159,7 @@ export const openaiProvider = {
 
           if (delta) {
             content += delta;
+            handlers.onText?.(delta);
             emitEchoResponse(handlers.echo, delta);
           }
         }
@@ -185,6 +187,7 @@ export const openaiProvider = {
 
         if (delta) {
           content += delta;
+          handlers.onText?.(delta);
           emitEchoResponse(handlers.echo, delta);
         }
       }

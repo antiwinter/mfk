@@ -79,6 +79,9 @@ export const googleProvider = {
     if (!contentType.includes('text/event-stream')) {
       const data = await response.json();
       const text = extractResponseText(data);
+      if (text) {
+        options.onText?.(text);
+      }
       emitEchoResponse(options.echo, text);
       finalizeEcho(options.echo);
       return toOpenAiResponse({
@@ -109,7 +112,7 @@ export const googleProvider = {
       buffer = events.pop() ?? '';
 
       for (const event of events) {
-        const delta = processStreamEvent(event, options.echo);
+        const delta = processStreamEvent(event, options);
         if (delta) {
           content += delta;
         }
@@ -117,7 +120,7 @@ export const googleProvider = {
     }
 
     if (buffer.trim()) {
-      const delta = processStreamEvent(buffer, options.echo);
+      const delta = processStreamEvent(buffer, options);
       if (delta) {
         content += delta;
       }
@@ -167,7 +170,7 @@ function extractResponseText(data) {
     : '';
 }
 
-function processStreamEvent(event, echo) {
+function processStreamEvent(event, options) {
   const lines = event
     .split('\n')
     .map((line) => line.trim())
@@ -188,7 +191,8 @@ function processStreamEvent(event, echo) {
     const text = extractResponseText(data);
     if (text) {
       combined += text;
-      emitEchoResponse(echo, text);
+      options.onText?.(text);
+      emitEchoResponse(options.echo, text);
     }
   }
 
