@@ -269,8 +269,13 @@ function shouldDisable(errorType) {
 function providerSupportsModel(provider, requestedModel) {
   const normalizedRequested = normalizeModelId(requestedModel);
   return provider.models.some((model) => {
-    if (model === '*' || model.endsWith('/*')) {
+    if (model === '*') {
       return true;
+    }
+
+    if (model.endsWith('/*')) {
+      const prefix = model.slice(0, -1); // e.g. "anthropic/"
+      return requestedModel.startsWith(prefix) || normalizedRequested.startsWith(prefix);
     }
 
     return model === requestedModel || normalizeModelId(model) === normalizedRequested;
