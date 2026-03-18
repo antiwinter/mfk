@@ -17,8 +17,8 @@ export function registerTestCommand(program) {
         throw new Error(`Unknown provider: ${providerRef}`);
       }
 
-      if (provider.keys.length === 0) {
-        throw new Error(`Provider ${providerRef} has no keys configured`);
+      if (!provider.key) {
+        throw new Error(`Provider ${providerRef} has no key configured`);
       }
       const result = await discoverProviderModels(provider);
 

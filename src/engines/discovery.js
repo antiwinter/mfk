@@ -4,31 +4,33 @@ import { buildProviderUrl, createEchoOptions, emitEchoResponse, finalizeEcho, un
 
 const DETECTION_PRIORITY = ['anthropic', 'openai', 'google'];
 
+const DASHSCOPE_MODELS = ['glm-5', 'kimi-k2.5', 'qwen3-coder-plus', 'qwen3.5-flash', 'qwen3.5-plus', 'MiniMax-M2.5'];
+
 export async function discoverProviderModels(provider) {
-  if (!provider?.keys?.length) {
-    throw new Error(`Provider ${provider?.name ?? 'unknown'} has no keys configured`);
+  if (!provider?.key) {
+    throw new Error(`Provider ${provider?.name ?? 'unknown'} has no key configured`);
   }
 
   const engine = getEngine(provider.type);
-  let lastError = null;
+  const key = provider.key;
+  const startedAt = Date.now();
 
-  for (const key of provider.keys) {
-    const startedAt = Date.now();
-
-    try {
-      const models = uniqueModels(await engine.listModels(provider, key)).sort(compareText);
-      return {
-        provider,
-        key,
-        models,
-        latencyMs: Date.now() - startedAt,
-      };
-    } catch (error) {
-      lastError = error;
-    }
+  if (provider.baseUrl?.includes('coding.dashscope.aliyuncs.com')) {
+    return {
+      provider,
+      key,
+      models: [...DASHSCOPE_MODELS].sort(compareText),
+      latencyMs: Date.now() - startedAt,
+    };
   }
 
-  throw new Error(`Provider test failed: ${lastError?.message ?? 'unknown error'}`);
+  const models = uniqueModels(await engine.listModels(provider, key)).sort(compareText);
+  return {
+    provider,
+    key,
+    models,
+    latencyMs: Date.now() - startedAt,
+  };
 }
 
 export async function probeProviderModel(provider, key, model, handlers = {}) {
@@ -103,7 +105,7 @@ export async function detectProviderConfiguration({ baseProvider, key, knownMode
     const provider = {
       ...baseProvider,
       type,
-      keys: [key],
+      key,
     };
 
     try {
@@ -220,26 +222,9 @@ export function selectProbeModels(models, knownModel) {
     concreteModels.push(knownModel);
   }
 
-  return concreteModels
-    .slice()
-    .sort((left, right) => compareProbeRank(left, right) || compareText(left, right))
-    .slice(0, 5);
+  const sorted = concreteModels.slice().sort(compareText);
+  if (sorted.length === 0) return [];
+  return [sorted[sorted.length - 1]];
 }
 
-function compareProbeRank(left, right) {
-  return getProbeRank(left) - getProbeRank(right);
-}
 
-function getProbeRank(model) {
-  const normalized = model.toLowerCase();
-
-  if (normalized.includes('sonnet-4-6')) return 0;
-  if (normalized.includes('sonnet-4-5')) return 1;
-  if (normalized.includes('sonnet-4')) return 2;
-  if (normalized.includes('haiku-4-5')) return 3;
-  if (normalized.includes('haiku')) return 4;
-  if (normalized.includes('opus-4-6')) return 5;
-  if (normalized.includes('opus')) return 6;
-
-  return 50;
-}

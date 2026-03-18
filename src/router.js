@@ -239,18 +239,17 @@ function selectCandidates(config, db, ir) {
       continue;
     }
 
-    for (const key of provider.keys) {
-      const state = db.getKeyState(provider.id, key.name);
-      if (isCooldownActive(state?.disabled_until, now)) {
-        continue;
-      }
-
-      candidates.push({
-        provider,
-        key,
-        keyState: state,
-      });
+    const key = provider.key;
+    const state = db.getKeyState(provider.id, key.name);
+    if (isCooldownActive(state?.disabled_until, now)) {
+      continue;
     }
+
+    candidates.push({
+      provider,
+      key,
+      keyState: state,
+    });
   }
 
   return candidates.sort((left, right) => {

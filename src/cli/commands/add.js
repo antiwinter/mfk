@@ -23,7 +23,7 @@ export function registerAddCommand(program) {
         order: config.providers.length,
       });
 
-      const tempKey = probeProvider.keys[0];
+      const tempKey = probeProvider.key;
       const reporter = createDetectionReporter();
 
       console.log(`provider: ${existingProvider ? formatProviderRef(existingProvider) : config.providers.length + 1}`);

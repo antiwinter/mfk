@@ -115,13 +115,11 @@ export function buildRuntimeProvider({ apiKey, baseUrl, type, quotaReset, failur
     failureReset: failureReset ?? DEFAULT_FAILURE_RESET,
     headers: {},
     models: Array.isArray(models) ? uniqueModels(models).sort(compareText) : [],
-    keys: [
-      {
-        name: PRIMARY_KEY_NAME,
-        value: apiKey,
-        priority: order,
-      },
-    ],
+    key: {
+      name: PRIMARY_KEY_NAME,
+      value: apiKey,
+      priority: order,
+    },
   };
 }
 

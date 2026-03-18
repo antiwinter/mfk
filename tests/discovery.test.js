@@ -8,10 +8,10 @@ test('selectProbeModels falls back to a known model when discovery returns none'
   assert.deepEqual(models, ['qwen3.5-plus']);
 });
 
-test('selectProbeModels includes a known model alongside discovered models', () => {
+test('selectProbeModels uses last model alphabetically from discovered models', () => {
   const models = selectProbeModels(['claude-sonnet-4-5'], 'qwen3.5-plus');
 
-  assert.deepEqual(models, ['claude-sonnet-4-5', 'qwen3.5-plus']);
+  assert.deepEqual(models, ['qwen3.5-plus']);
 });
 
 test('selectProbeModels ignores wildcard entries', () => {
