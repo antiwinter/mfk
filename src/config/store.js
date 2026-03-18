@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { uniqueModels } from '../providers/shared.js';
+import { uniqueModels } from '../lib/http.js';
 
 const DEFAULT_QUOTA_RESET = 'daily';
 const DEFAULT_FAILURE_RESET = 'hourly';

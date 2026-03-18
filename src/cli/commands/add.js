@@ -1,14 +1,16 @@
 import { buildRuntimeProvider, formatProviderRef, loadConfig, saveConfig } from '../../config/store.js';
-import { detectProviderConfiguration } from '../../providers/discovery.js';
+import { detectProviderConfiguration } from '../../engines/discovery.js';
 
 export function registerAddCommand(program) {
   program
     .command('add <urlPort> <key>')
     .description('Add a provider by auto-detecting its API style and importing its model list')
+    .option('-m, --model <model>', 'Known working model to probe when the provider does not expose /models')
     .action(async (...args) => {
       const [urlPort, apiKey] = args;
       const command = args.at(-1);
       const configPath = command.optsWithGlobals().config;
+      const knownModel = command.opts().model?.trim() || null;
       const { config } = await loadConfig(configPath);
       const baseUrl = normalizeBaseUrl(urlPort);
       const existingProvider = config.providers.find((provider) => provider.apiKey === apiKey);
@@ -28,6 +30,9 @@ export function registerAddCommand(program) {
       console.log(`base_url: ${baseUrl}`);
       console.log(`provider_key: ${maskApiKey(apiKey)}`);
       console.log('source: live_api');
+      if (knownModel) {
+        console.log(`known_model: ${knownModel}`);
+      }
       console.log('detecting_api_style: start');
 
       const detected = await detectProviderConfiguration({
@@ -36,6 +41,7 @@ export function registerAddCommand(program) {
           reporter,
         },
         key: tempKey,
+        knownModel,
       });
       const models = detected.models;
 
@@ -51,7 +57,7 @@ export function registerAddCommand(program) {
 
       await saveConfig(configPath, config);
       console.log(`type: ${detected.type}`);
-      console.log(`model_list_latency_ms: ${detected.listLatencyMs}`);
+      console.log(`model_list_latency_ms: ${detected.listLatencyMs ?? 'unavailable'}`);
       console.log(`probe_model: ${detected.probeModel}`);
       console.log(`probe_prompt: ${detected.prompt}`);
       console.log(`probe_latency_ms: ${detected.probeLatencyMs}`);
@@ -71,8 +77,11 @@ function createDetectionReporter() {
     onModelListSuccess(event) {
       console.log(`style_model_list: ${event.type} ok (${event.modelCount} models, ${event.latencyMs} ms)`);
     },
+    onModelListFailure(event) {
+      console.log(`style_model_list_fail: ${event.type} (${summarizeReason(event.reason)})`);
+    },
     onProbeStart(event) {
-      console.log(`style_probe: ${event.type} -> ${event.model}`);
+      console.log(`style_probe: ${event.type} -> ${event.model}${event.hinted ? ' (hint)' : ''}`);
     },
     onProbeFailure(event) {
       console.log(`style_probe_fail: ${event.type} -> ${event.model} (${summarizeReason(event.reason)})`);

@@ -78,6 +78,14 @@ Add a provider by base URL and key. `mfk` auto-detects the API style in priority
 mfk add localhost:11434 my-secret-key
 ```
 
+The base URL may be either a provider root such as `https://api.openai.com` or a versioned compatibility base such as `https://dashscope.aliyuncs.com/compatible-mode/v1`.
+
+If a provider supports inference but does not expose `/models`, pass a known working model so `mfk` can detect the API style by probe:
+
+```bash
+mfk add https://coding.dashscope.aliyuncs.com/apps/anthropic my-secret-key --model qwen3.5-plus
+```
+
 ## Local API
 
 The local gateway exposes an OpenAI-style endpoint at `/v1/chat/completions`.

@@ -1,5 +1,5 @@
 const LEGACY_PREFIX = 'sk-mfk-';
-const STYLE_PREFIX = 'mfk-';
+const SHORT_PREFIX = 'mfk-';
 
 export function parseVirtualKey(input) {
   const token = extractToken(input);
@@ -10,27 +10,19 @@ export function parseVirtualKey(input) {
       throw new Error('Virtual key username is empty');
     }
 
-    return {
-      token,
-      username,
-      style: 'openai',
-    };
+    return { token, username };
   }
 
-  if (token.startsWith(STYLE_PREFIX)) {
-    const match = token.match(/^mfk-([a-z0-9]+)-(.+)$/i);
-    if (!match) {
-      throw new Error('Style virtual key must match mfk-<style>-<username>');
+  if (token.startsWith(SHORT_PREFIX)) {
+    const username = token.slice(SHORT_PREFIX.length);
+    if (!username) {
+      throw new Error('Virtual key username is empty');
     }
 
-    return {
-      token,
-      style: match[1].toLowerCase(),
-      username: match[2],
-    };
+    return { token, username };
   }
 
-  throw new Error('Virtual key must start with sk-mfk- or mfk-<style>-');
+  throw new Error('Virtual key must start with sk-mfk- or mfk-');
 }
 
 function extractToken(input) {

@@ -19,6 +19,21 @@ export async function requestJson(url, options = {}) {
   return body;
 }
 
+export function buildProviderUrl(baseUrl, endpointPath) {
+  const base = new URL(baseUrl);
+  const endpoint = new URL(endpointPath, 'http://mfk.local');
+  const baseSegments = splitPathSegments(base.pathname);
+  const endpointSegments = splitPathSegments(endpoint.pathname);
+  const overlap = findSegmentOverlap(baseSegments, endpointSegments);
+  const joinedSegments = [...baseSegments, ...endpointSegments.slice(overlap)];
+
+  base.pathname = joinedSegments.length === 0 ? '/' : `/${joinedSegments.join('/')}`;
+  base.search = endpoint.search;
+  base.hash = endpoint.hash;
+
+  return base.toString().replace(/\/$/, base.pathname === '/' ? '/' : '');
+}
+
 export async function readJsonError(response, url) {
   const rawText = await response.text();
   const contentType = response.headers.get('content-type') ?? '';
@@ -95,72 +110,16 @@ export function createUpstreamError(url, statusCode, body) {
   return error;
 }
 
-export function normalizeOpenAiRequest(body) {
-  return {
-    model: body.model,
-    messages: Array.isArray(body.messages) ? body.messages : [],
-    temperature: body.temperature,
-    maxTokens: body.max_completion_tokens ?? body.max_tokens,
-    stream: Boolean(body.stream),
-    provider: body.provider,
-  };
-}
 
-export function toOpenAiResponse(payload) {
-  const usage = payload.usage ?? {};
-
-  return {
-    id: payload.id ?? `chatcmpl_${Date.now()}`,
-    object: 'chat.completion',
-    created: Math.floor(Date.now() / 1000),
-    model: payload.model,
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: 'assistant',
-          content: payload.content ?? '',
-        },
-        finish_reason: payload.finishReason ?? 'stop',
-      },
-    ],
-    usage: {
-      prompt_tokens: usage.promptTokens ?? 0,
-      completion_tokens: usage.completionTokens ?? 0,
-      total_tokens: usage.totalTokens ?? ((usage.promptTokens ?? 0) + (usage.completionTokens ?? 0)),
-    },
-  };
-}
-
-export function flattenMessageContent(content) {
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .filter((part) => part?.type === 'text' || typeof part?.text === 'string')
-      .map((part) => part.text ?? '')
-      .join('\n');
-  }
-
-  return '';
-}
-
-export function collectSystemPrompt(messages) {
-  return messages
-    .filter((message) => message.role === 'system')
-    .map((message) => flattenMessageContent(message.content))
-    .filter(Boolean)
-    .join('\n\n');
-}
 
 function extractEchoPrompt(request) {
   const userMessage = [...(request?.messages ?? [])]
     .reverse()
     .find((message) => message?.role === 'user');
 
-  return flattenMessageContent(userMessage?.content ?? '') || '(empty prompt)';
+  const content = userMessage?.content ?? '';
+  const text = typeof content === 'string' ? content : '';
+  return text || '(empty prompt)';
 }
 
 function classifyErrorType(statusCode, body, message) {
@@ -184,4 +143,25 @@ function classifyErrorType(statusCode, body, message) {
 
 function extractErrorMessage(body) {
   return body?.error?.message ?? body?.message ?? body?.text ?? null;
+}
+
+function splitPathSegments(pathname) {
+  return String(pathname ?? '')
+    .split('/')
+    .filter(Boolean);
+}
+
+function findSegmentOverlap(leftSegments, rightSegments) {
+  const maxOverlap = Math.min(leftSegments.length, rightSegments.length);
+
+  for (let size = maxOverlap; size > 0; size -= 1) {
+    const leftSuffix = leftSegments.slice(-size);
+    const rightPrefix = rightSegments.slice(0, size);
+
+    if (leftSuffix.every((segment, index) => segment === rightPrefix[index])) {
+      return size;
+    }
+  }
+
+  return 0;
 }

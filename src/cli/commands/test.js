@@ -1,5 +1,5 @@
 import { findProvider, formatProviderRef, loadConfig } from '../../config/store.js';
-import { discoverProviderModels, probeProviderModel } from '../../providers/discovery.js';
+import { discoverProviderModels, probeProviderModel } from '../../engines/discovery.js';
 
 export function registerTestCommand(program) {
   program

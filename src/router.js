@@ -1,21 +1,17 @@
-import { getProviderAdapter } from '../providers/index.js';
-import { isCooldownActive, computeNextBoundary } from '../lib/time.js';
+import { getEngine } from './engines/index.js';
+import { collectEvents } from './ir.js';
+import { buildProviderUrl, readJsonError } from './lib/http.js';
+import { isCooldownActive, computeNextBoundary } from './lib/time.js';
 
-export async function routeRequest({ config, db, request, username, virtualKey }) {
-  const candidates = selectCandidates(config, db, request);
+export async function route({ config, db, ir, inboundEngine, username, virtualKey, echo, originalBody }) {
+  const candidates = selectCandidates(config, db, ir);
   const requestedAt = new Date().toISOString();
-  debugLog('route_request', {
-    model: request.model,
-    normalizedModel: normalizeModelId(request.model),
-    provider: request.provider ?? null,
+  debugLog('route', {
+    model: ir.model,
+    normalizedModel: normalizeModelId(ir.model),
+    provider: ir.provider ?? null,
     username,
     candidateCount: candidates.length,
-    candidates: candidates.map((candidate) => ({
-      providerId: candidate.provider.id,
-      type: candidate.provider.type,
-      url: candidate.provider.baseUrl,
-      sampleModels: candidate.provider.models.slice(0, 5),
-    })),
   });
 
   if (candidates.length === 0) {
@@ -23,14 +19,14 @@ export async function routeRequest({ config, db, request, username, virtualKey }
       requestedAt,
       username,
       virtualKey,
-      requestModel: request.model,
-      requestedProvider: request.provider,
+      requestModel: ir.model,
+      requestedProvider: ir.provider,
       status: 'no_candidate',
       errorType: 'routing',
-      errorMessage: `No provider is configured for model ${request.model}`,
+      errorMessage: `No provider is configured for model ${ir.model}`,
     });
 
-    const error = new Error(`No provider is configured for model ${request.model}`);
+    const error = new Error(`No provider is configured for model ${ir.model}`);
     error.statusCode = 404;
     throw error;
   }
@@ -40,21 +36,35 @@ export async function routeRequest({ config, db, request, username, virtualKey }
   for (const candidate of candidates) {
     const startedAt = Date.now();
     try {
-      const adapter = getProviderAdapter(candidate.provider.type);
-      const response = await adapter.invoke(candidate.provider, candidate.key, request);
+      const outboundEngine = getEngine(candidate.provider.type);
+      const passthrough = inboundEngine.type === outboundEngine.type;
+      const { url, headers } = buildFetch(outboundEngine, ir, candidate.provider, candidate.key);
+      const body = passthrough ? originalBody : outboundEngine.buildReq(ir);
+      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+
+      let result;
+      if (passthrough) {
+        if (!response.ok) await readJsonError(response, url);
+        result = await response.json();
+      } else {
+        const irEvents = outboundEngine.parse(response, url);
+        const message = await collectEvents(irEvents);
+        result = inboundEngine.buildRes(message);
+      }
+
       db.markSuccess(candidate.provider.id, candidate.key.name);
       db.logRequest({
         requestedAt,
         username,
         virtualKey,
-        requestModel: request.model,
-        requestedProvider: request.provider,
+        requestModel: ir.model,
+        requestedProvider: ir.provider,
         selectedProvider: candidate.provider.id,
         selectedKey: candidate.key.name,
         status: 'success',
         latencyMs: Date.now() - startedAt,
       });
-      return response;
+      return result;
     } catch (error) {
       lastError = error;
       const errorType = error.errorType ?? 'fatal';
@@ -71,8 +81,8 @@ export async function routeRequest({ config, db, request, username, virtualKey }
         requestedAt,
         username,
         virtualKey,
-        requestModel: request.model,
-        requestedProvider: request.provider,
+        requestModel: ir.model,
+        requestedProvider: ir.provider,
         selectedProvider: candidate.provider.id,
         selectedKey: candidate.key.name,
         status: 'failed',
@@ -92,25 +102,19 @@ export async function routeRequest({ config, db, request, username, virtualKey }
   throw error;
 }
 
-export async function routeRequestStream({ config, db, request, username, virtualKey, onText }) {
-  const candidates = selectCandidates(config, db, request);
+export async function routeStream({ config, db, ir, reply, inboundEngine, username, virtualKey, originalBody }) {
+  const candidates = selectCandidates(config, db, ir);
   const requestedAt = new Date().toISOString();
-  debugLog('route_request_stream', {
-    model: request.model,
-    normalizedModel: normalizeModelId(request.model),
-    provider: request.provider ?? null,
+  debugLog('route_stream', {
+    model: ir.model,
+    normalizedModel: normalizeModelId(ir.model),
+    provider: ir.provider ?? null,
     username,
     candidateCount: candidates.length,
-    candidates: candidates.map((candidate) => ({
-      providerId: candidate.provider.id,
-      type: candidate.provider.type,
-      url: candidate.provider.baseUrl,
-      sampleModels: candidate.provider.models.slice(0, 5),
-    })),
   });
 
   if (candidates.length === 0) {
-    const error = new Error(`No provider is configured for model ${request.model}`);
+    const error = new Error(`No provider is configured for model ${ir.model}`);
     error.statusCode = 404;
     throw error;
   }
@@ -119,32 +123,38 @@ export async function routeRequestStream({ config, db, request, username, virtua
 
   for (const candidate of candidates) {
     const startedAt = Date.now();
-    let emittedText = false;
+    let emittedData = false;
 
     try {
-      const adapter = getProviderAdapter(candidate.provider.type);
-      const response = adapter.invokeStream
-        ? await adapter.invokeStream(candidate.provider, candidate.key, request, {
-            onText: (chunk) => {
-              emittedText = true;
-              onText?.(chunk);
-            },
-          })
-        : await adapter.invoke(candidate.provider, candidate.key, request);
+      const outboundEngine = getEngine(candidate.provider.type);
+      const passthrough = inboundEngine.type === outboundEngine.type;
+      const streamIr = { ...ir, stream: true };
+      const { url, headers } = buildFetch(outboundEngine, streamIr, candidate.provider, candidate.key);
+      const body = passthrough ? originalBody : outboundEngine.buildReq(streamIr);
+      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+
+      if (passthrough) {
+        if (!response.ok) await readJsonError(response, url);
+        await pipeStream(reply, response);
+      } else {
+        const irEvents = outboundEngine.parse(response, url);
+        await inboundEngine.writeStream(reply, irEvents, ir);
+      }
+      emittedData = true;
 
       db.markSuccess(candidate.provider.id, candidate.key.name);
       db.logRequest({
         requestedAt,
         username,
         virtualKey,
-        requestModel: request.model,
-        requestedProvider: request.provider,
+        requestModel: ir.model,
+        requestedProvider: ir.provider,
         selectedProvider: candidate.provider.id,
         selectedKey: candidate.key.name,
         status: 'success',
         latencyMs: Date.now() - startedAt,
       });
-      return response;
+      return;
     } catch (error) {
       lastError = error;
       const errorType = error.errorType ?? 'fatal';
@@ -161,8 +171,8 @@ export async function routeRequestStream({ config, db, request, username, virtua
         requestedAt,
         username,
         virtualKey,
-        requestModel: request.model,
-        requestedProvider: request.provider,
+        requestModel: ir.model,
+        requestedProvider: ir.provider,
         selectedProvider: candidate.provider.id,
         selectedKey: candidate.key.name,
         status: 'failed',
@@ -171,7 +181,7 @@ export async function routeRequestStream({ config, db, request, username, virtua
         latencyMs: Date.now() - startedAt,
       });
 
-      if (emittedText || !error.retryable) {
+      if (emittedData || !error.retryable) {
         break;
       }
     }
@@ -182,9 +192,41 @@ export async function routeRequestStream({ config, db, request, username, virtua
   throw error;
 }
 
-function selectCandidates(config, db, request) {
+// Also export a simple invoke helper for discovery probing (non-stream, returns IR message)
+export async function invokeEngine(engine, provider, key, ir) {
+  const { url, headers } = buildFetch(engine, ir, provider, key);
+  const body = engine.buildReq(ir);
+  const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  return collectEvents(engine.parse(response, url));
+}
+
+function buildFetch(engine, ir, provider, key) {
+  const url = buildProviderUrl(provider.baseUrl, engine.endpoint(ir, key));
+  const headers = engine.buildHeaders(provider, key);
+  return { url, headers };
+}
+
+async function pipeStream(reply, response) {
+  reply.raw.setHeader('content-type', response.headers.get('content-type') ?? 'text/event-stream');
+  reply.raw.setHeader('cache-control', 'no-cache');
+  reply.raw.setHeader('connection', 'keep-alive');
+  reply.hijack();
+
+  const reader = response.body.getReader();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      reply.raw.write(value);
+    }
+  } finally {
+    reply.raw.end();
+  }
+}
+
+function selectCandidates(config, db, ir) {
   const now = new Date();
-  const requestedProvider = request.provider?.trim();
+  const requestedProvider = ir.provider?.trim();
   const candidates = [];
 
   for (const provider of config.providers) {
@@ -192,7 +234,7 @@ function selectCandidates(config, db, request) {
       continue;
     }
 
-    const supportsModel = provider.models.length === 0 || providerSupportsModel(provider, request.model);
+    const supportsModel = provider.models.length === 0 || providerSupportsModel(provider, ir.model);
     if (!supportsModel) {
       continue;
     }
