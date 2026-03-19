@@ -1,40 +1,55 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatDumpLine } from '../src/lib/http.js';
+import { createDumpOptions, emitDumpError, emitDumpRequestLine, emitDumpResponse, finalizeDump } from '../src/lib/http.js';
 
 function stripAnsi(value) {
   return String(value).replace(/\x1B\[[0-9;]*m/g, '');
 }
 
-test('formatDumpLine normalizes text to one line and truncates prompt and response independently', () => {
-  const line = stripAnsi(formatDumpLine({
+test('dump emits request and response lines with one-line normalization and truncation', () => {
+  const output = [];
+  const dump = createDumpOptions({
+    enabled: true,
+    columns: 120,
+    write(text) {
+      output.push(text);
+    },
+  });
+
+  emitDumpRequestLine(dump, {
     requestedModel: 'qwen3.5-plus',
     selectedModel: 'anthropic/claude-sonnet-4-6',
     selectedKeyValue: 'sk-1234567890abcdef',
     promptChars: 15500,
     promptText: 'hello\nworld this prompt should be truncated heavily',
-    responseText: 'pong\nreply text should also be truncated independently',
+  });
+  emitDumpResponse(dump, 'pong\nreply text should also be truncated independently');
+  finalizeDump(dump, {
     inputTokens: 18000,
     outputTokens: 368,
-    status: 'success',
-  }, 120));
+  });
 
-  assert.ok(!line.includes('\n'));
-  assert.match(line, /^-> 15\.5k qwen3\.5-plus \(sk-1234\.\.\.cdef\/anthropic\/claude-sonnet-4-6\) /);
-  assert.match(line, /hello world this \.\.\./);
-  assert.match(line, / << pong reply text s\.\.\./);
-  assert.match(line, /\[18k ↑, 368 ↓\]$/);
+  const rendered = stripAnsi(output.join(''));
+  assert.equal(rendered, '-> qwen3.5-plus (sk-1234...cdef/anthropic/claude-sonnet-4-6) hello world this ... [15.5k]\n<< pong reply text s... [18k ↑, 368 ↓]\n');
 });
 
-test('formatDumpLine renders failures with status plus truncated message', () => {
-  const line = stripAnsi(formatDumpLine({
+test('dump renders failures with status plus truncated message', () => {
+  const output = [];
+  const dump = createDumpOptions({
+    enabled: true,
+    columns: 120,
+    write(text) {
+      output.push(text);
+    },
+  });
+
+  emitDumpRequestLine(dump, {
     requestedModel: 'qwen3.5-plus',
     promptChars: 5,
     promptText: 'hello',
-    status: 'auth_error',
-    errorType: 'auth_error',
-    errorMessage: 'Unknown\nvirtual key and a very long message that should be truncated',
-  }, 120));
+  });
+  emitDumpError(dump, 'auth_error', 'Unknown\nvirtual key and a very long message that should be truncated');
+  finalizeDump(dump);
 
-  assert.equal(line, '-> 5 qwen3.5-plus (-/qwen3.5-plus) hello << auth_error Unknown virtual k...');
+  assert.equal(stripAnsi(output.join('')), '-> qwen3.5-plus (-/qwen3.5-plus) hello [5]\n<< auth_error Unknown virtual k...\n');
 });

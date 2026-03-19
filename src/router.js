@@ -1,14 +1,13 @@
 import { normalizeRequestLogRecord } from './db/client.js';
 import { getEngine } from './engines/index.js';
 import { collectEvents } from './ir.js';
-import { buildProviderUrl, captureDumpPrompt, captureDumpResponse, emitDumpLine } from './lib/http.js';
+import { buildProviderUrl, emitDumpError, emitDumpRequestLine, emitDumpResponse, extractPromptText, finalizeDump } from './lib/http.js';
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
 import { normalizeModelId, resolveNearestProviderModel, resolveProviderModel } from './lib/models.js';
 
 export async function route({ config, db, ir, inboundEngine, alias, dump, onRequestLog }) {
   const candidates = selectCandidates(config, db, ir);
   const requestedAt = new Date().toISOString();
-  captureDumpPrompt(dump, ir);
   debugLog('route', {
     model: ir.model,
     normalizedModel: normalizeModelId(ir.model),
@@ -26,12 +25,15 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
       errorType: 'routing',
       errorMessage: `No provider is configured for model ${ir.model}`,
     }, onRequestLog);
-    emitDumpLine(dump, {
+    emitDumpRequestLine(dump, {
       requestedModel: ir.model,
-      status: 'no_candidate',
-      errorType: 'routing',
-      errorMessage: `No provider is configured for model ${ir.model}`,
+      selectedModel: ir.model,
+      request: ir,
+      promptText: extractPromptText(ir),
+      promptChars: extractPromptText(ir).length,
     });
+    emitDumpError(dump, 'routing', `No provider is configured for model ${ir.model}`);
+    finalizeDump(dump);
 
     const error = new Error(`No provider is configured for model ${ir.model}`);
     error.statusCode = 404;
@@ -46,6 +48,15 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
     try {
       const outboundEngine = getEngine(candidate.provider.type);
       const routedIr = candidate.model === ir.model ? ir : { ...ir, model: candidate.model };
+      const promptText = extractPromptText(routedIr);
+      emitDumpRequestLine(dump, {
+        requestedModel: ir.model,
+        selectedModel: candidate.model,
+        selectedKeyValue: candidate.key.value,
+        request: routedIr,
+        promptText,
+        promptChars: promptText.length,
+      });
       const { url, headers } = buildFetch(outboundEngine, routedIr, candidate.provider, candidate.key);
       const body = outboundEngine.buildReq(routedIr);
       const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
@@ -54,9 +65,10 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
       const message = await collectEvents(irEvents);
       const usage = message.usage ?? null;
       const result = inboundEngine.buildRes(message);
+      finalizeDump(dump, usage);
 
       db.markSuccess(candidate.key.name);
-      const row = writeRequestLog(db, {
+      writeRequestLog(db, {
         requestedAt,
         alias,
         requestModel: ir.model,
@@ -66,14 +78,6 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
         inputTokens: usage?.inputTokens,
         outputTokens: usage?.outputTokens,
       }, onRequestLog);
-      emitDumpLine(dump, {
-        requestedModel: ir.model,
-        selectedModel: candidate.model,
-        selectedKeyValue: candidate.key.value,
-        status: row.status,
-        inputTokens: row.input_tokens,
-        outputTokens: row.output_tokens,
-      });
       return result;
     } catch (error) {
       lastError = error;
@@ -84,6 +88,8 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
         errorType,
         errorMessage: error.message,
       };
+      emitDumpError(dump, errorType, error.message);
+      finalizeDump(dump);
       const disabledUntil = shouldDisable(errorType)
         ? computeNextBoundary(errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset)
         : null;
@@ -110,15 +116,6 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
     }
   }
 
-  emitDumpLine(dump, {
-    requestedModel: ir.model,
-    selectedModel: lastFailure?.selectedModel,
-    selectedKeyValue: lastFailure?.selectedKeyValue,
-    status: lastFailure?.errorType ?? 'upstream_error',
-    errorType: lastFailure?.errorType ?? 'upstream_error',
-    errorMessage: lastFailure?.errorMessage ?? lastError?.message,
-  });
-
   const error = new Error(lastError?.message ?? 'All candidate providers failed');
   error.statusCode = lastError?.statusCode ?? 503;
   throw error;
@@ -127,7 +124,6 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
 export async function routeStream({ config, db, ir, reply, inboundEngine, alias, dump, onRequestLog }) {
   const candidates = selectCandidates(config, db, ir);
   const requestedAt = new Date().toISOString();
-  captureDumpPrompt(dump, ir);
   debugLog('route_stream', {
     model: ir.model,
     normalizedModel: normalizeModelId(ir.model),
@@ -137,12 +133,15 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
   });
 
   if (candidates.length === 0) {
-    emitDumpLine(dump, {
+    emitDumpRequestLine(dump, {
       requestedModel: ir.model,
-      status: 'no_candidate',
-      errorType: 'routing',
-      errorMessage: `No provider is configured for model ${ir.model}`,
+      selectedModel: ir.model,
+      request: ir,
+      promptText: extractPromptText(ir),
+      promptChars: extractPromptText(ir).length,
     });
+    emitDumpError(dump, 'routing', `No provider is configured for model ${ir.model}`);
+    finalizeDump(dump);
     const error = new Error(`No provider is configured for model ${ir.model}`);
     error.statusCode = 404;
     throw error;
@@ -160,6 +159,15 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
       const streamIr = candidate.model === ir.model
         ? { ...ir, stream: true }
         : { ...ir, model: candidate.model, stream: true };
+      const promptText = extractPromptText(streamIr);
+      emitDumpRequestLine(dump, {
+        requestedModel: ir.model,
+        selectedModel: candidate.model,
+        selectedKeyValue: candidate.key.value,
+        request: streamIr,
+        promptText,
+        promptChars: promptText.length,
+      });
       const { url, headers } = buildFetch(outboundEngine, streamIr, candidate.provider, candidate.key);
       const body = outboundEngine.buildReq(streamIr);
       const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
@@ -174,9 +182,10 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
       await inboundEngine.writeStream(reply, irEvents, ir);
       const usage = finalMessage?.usage ?? null;
       emittedData = true;
+      finalizeDump(dump, usage);
 
       db.markSuccess(candidate.key.name);
-      const row = writeRequestLog(db, {
+      writeRequestLog(db, {
         requestedAt,
         alias,
         requestModel: ir.model,
@@ -186,14 +195,6 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
         inputTokens: usage?.inputTokens,
         outputTokens: usage?.outputTokens,
       }, onRequestLog);
-      emitDumpLine(dump, {
-        requestedModel: ir.model,
-        selectedModel: candidate.model,
-        selectedKeyValue: candidate.key.value,
-        status: row.status,
-        inputTokens: row.input_tokens,
-        outputTokens: row.output_tokens,
-      });
       return;
     } catch (error) {
       lastError = error;
@@ -204,6 +205,8 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
         errorType,
         errorMessage: error.message,
       };
+      emitDumpError(dump, errorType, error.message);
+      finalizeDump(dump);
       const disabledUntil = shouldDisable(errorType)
         ? computeNextBoundary(errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset)
         : null;
@@ -229,15 +232,6 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
       }
     }
   }
-
-  emitDumpLine(dump, {
-    requestedModel: ir.model,
-    selectedModel: lastFailure?.selectedModel,
-    selectedKeyValue: lastFailure?.selectedKeyValue,
-    status: lastFailure?.errorType ?? 'upstream_error',
-    errorType: lastFailure?.errorType ?? 'upstream_error',
-    errorMessage: lastFailure?.errorMessage ?? lastError?.message,
-  });
 
   const error = new Error(lastError?.message ?? 'All candidate providers failed');
   error.statusCode = lastError?.statusCode ?? 503;
@@ -274,9 +268,9 @@ async function* tapDumpEvents(eventStream, dump) {
   for await (const event of eventStream) {
     if (event.type === 'delta' && event.text) {
       sawDelta = true;
-      captureDumpResponse(dump, event.text);
+      emitDumpResponse(dump, event.text);
     } else if (event.type === 'message' && event.content && !sawDelta) {
-      captureDumpResponse(dump, event.content);
+      emitDumpResponse(dump, event.content);
     }
 
     yield event;

@@ -58,63 +58,46 @@ export function createDumpOptions(overrides = {}) {
     enabled: Boolean(overrides.enabled),
     write: overrides.write ?? ((text) => process.stdout.write(text)),
     columns: overrides.columns ?? process.stdout.columns ?? 160,
-    promptText: '',
-    promptChars: 0,
-    responseText: '',
-    finished: false,
-  };
-}
-
-export function createProbeEchoOptions(overrides = {}) {
-  return {
-    enabled: Boolean(overrides.enabled),
-    write: overrides.write ?? ((text) => process.stdout.write(text)),
-    columns: overrides.columns ?? process.stdout.columns ?? 160,
     headerWritten: false,
-    finished: false,
     responseWritten: false,
+    responseLength: 0,
+    responseTruncated: false,
     pendingWhitespace: false,
+    finished: false,
   };
 }
 
-export function captureDumpPrompt(dump, request) {
-  if (!dump?.enabled || dump.promptChars > 0) {
+export function emitDumpRequestLine(dump, payload) {
+  if (!dump?.enabled) {
     return;
   }
 
-  const prompt = extractEchoPrompt(request);
-  dump.promptText = prompt;
-  dump.promptChars = prompt.length;
+  if (dump.headerWritten && !dump.finished) {
+    return;
+  }
+
+  resetDumpState(dump);
+
+  const columns = dump.columns ?? process.stdout.columns ?? 160;
+  const promptWidth = Math.max(16, columns - 100);
+  const promptText = truncateOneLine(payload.promptText ?? extractPromptText(payload.request), promptWidth);
+  const requestedModel = payload.requestedModel || '-';
+  const selectedModel = payload.selectedModel || requestedModel;
+  const maskedKey = maskUpstreamKey(payload.selectedKeyValue);
+  const promptChars = formatCompactCount(payload.promptChars ?? extractPromptText(payload.request).length);
+
+  dump.write(chalk.blue(`-> ${requestedModel} (${maskedKey}/${selectedModel}) ${promptText} [${promptChars}]\n`));
+  dump.write(chalk.gray('<< '));
+  dump.headerWritten = true;
+  dump.finished = false;
 }
 
-export function captureDumpResponse(dump, text) {
+export function emitDumpResponse(dump, text) {
   if (!dump?.enabled || !text) {
     return;
   }
 
-  dump.responseText += text;
-}
-
-export function emitProbeRequestLine(probeEcho, payload) {
-  if (!probeEcho?.enabled || probeEcho.headerWritten) {
-    return;
-  }
-
-  const columns = probeEcho.columns ?? process.stdout.columns ?? 160;
-  const promptWidth = Math.max(16, columns - 100);
-  const promptText = truncateOneLine(payload.promptText || '(empty prompt)', promptWidth);
-  const requestedModel = payload.requestedModel || '-';
-  const selectedModel = payload.selectedModel || requestedModel;
-  const maskedKey = maskUpstreamKey(payload.selectedKeyValue);
-  const promptChars = formatCompactCount(payload.promptChars ?? 0);
-
-  probeEcho.write(chalk.blue(`-> ${requestedModel} (${maskedKey}/${selectedModel}) ${promptText} [${promptChars}]\n`));
-  probeEcho.write(chalk.gray('<< '));
-  probeEcho.headerWritten = true;
-}
-
-export function emitProbeResponse(probeEcho, text) {
-  if (!probeEcho?.enabled || !text) {
+  if (dump.responseTruncated) {
     return;
   }
 
@@ -124,88 +107,77 @@ export function emitProbeResponse(probeEcho, text) {
   const normalizedText = normalizeOneLine(rawText);
 
   if (!normalizedText) {
-    probeEcho.pendingWhitespace ||= hasLeadingWhitespace || hasTrailingWhitespace;
+    dump.pendingWhitespace ||= hasLeadingWhitespace || hasTrailingWhitespace;
     return;
   }
 
-  if ((probeEcho.pendingWhitespace || hasLeadingWhitespace) && probeEcho.responseWritten) {
-    probeEcho.write(chalk.gray(' '));
-  }
+  const needsLeadingSpace = (dump.pendingWhitespace || hasLeadingWhitespace) && dump.responseWritten;
+  const nextText = needsLeadingSpace ? ` ${normalizedText}` : normalizedText;
+  const responseWidth = Math.max(16, (dump.columns ?? process.stdout.columns ?? 160) - 100);
+  const remainingWidth = responseWidth - dump.responseLength;
 
-  probeEcho.write(chalk.gray(normalizedText));
-  probeEcho.responseWritten = true;
-  probeEcho.pendingWhitespace = hasTrailingWhitespace;
-}
-
-export function emitProbeError(probeEcho, errorType, message) {
-  if (!probeEcho?.enabled || probeEcho.finished) {
+  if (remainingWidth <= 0) {
+    dump.responseTruncated = true;
     return;
   }
 
-  if (!probeEcho.headerWritten) {
-    probeEcho.write(chalk.gray('<< '));
-    probeEcho.headerWritten = true;
-  }
-
-  probeEcho.write(chalk.red(errorType || 'error'));
-  if (message) {
-    probeEcho.write(` ${chalk.gray(truncateOneLine(message, Math.max(16, (probeEcho.columns ?? process.stdout.columns ?? 160) - 100)))}`);
-  }
-  probeEcho.responseWritten = true;
-}
-
-export function finalizeProbeEcho(probeEcho) {
-  if (!probeEcho?.enabled || probeEcho.finished) {
+  if (nextText.length <= remainingWidth) {
+    dump.write(chalk.gray(nextText));
+    dump.responseLength += nextText.length;
+    dump.responseWritten = true;
+    dump.pendingWhitespace = hasTrailingWhitespace;
     return;
   }
 
-  if (!probeEcho.responseWritten) {
-    probeEcho.write(chalk.gray('(empty response)'));
+  if (remainingWidth <= 3) {
+    dump.write(chalk.gray('.'.repeat(remainingWidth)));
+  } else {
+    dump.write(chalk.gray(`${nextText.slice(0, remainingWidth - 3)}...`));
   }
 
-  probeEcho.write('\n');
-  probeEcho.finished = true;
+  dump.responseLength = responseWidth;
+  dump.responseWritten = true;
+  dump.responseTruncated = true;
+  dump.pendingWhitespace = false;
 }
 
-export function emitDumpLine(dump, payload) {
+export function emitDumpError(dump, errorType, message) {
   if (!dump?.enabled || dump.finished) {
     return;
   }
 
-  dump.write(`${formatDumpLine({
-    ...payload,
-    promptText: payload.promptText ?? dump.promptText,
-    promptChars: payload.promptChars ?? dump.promptChars,
-    responseText: payload.responseText ?? dump.responseText,
-  }, dump.columns)}\n`);
+  if (!dump.headerWritten) {
+    dump.write(chalk.gray('<< '));
+    dump.headerWritten = true;
+  }
+
+  dump.write(chalk.red(errorType || 'error'));
+  if (message) {
+    dump.write(` ${chalk.gray(truncateOneLine(message, Math.max(16, (dump.columns ?? process.stdout.columns ?? 160) - 100)))}`);
+  }
+  dump.responseWritten = true;
+}
+
+export function finalizeDump(dump, usage) {
+  if (!dump?.enabled || dump.finished) {
+    return;
+  }
+
+  if (!dump.responseWritten) {
+    dump.write(chalk.gray('(empty response)'));
+  }
+
+  const tokenSuffix = formatTokenSuffix(usage?.inputTokens, usage?.outputTokens);
+  if (tokenSuffix) {
+    dump.write(` ${tokenSuffix}`);
+  }
+
+  dump.write('\n');
   dump.finished = true;
 }
 
 export function uniqueModels(models) {
   return [...new Set((models ?? []).filter(Boolean))];
-}
-
-export function formatDumpLine(payload, columns = process.stdout.columns ?? 160) {
-  const promptWidth = Math.max(16, columns - 100);
-  const responseWidth = Math.max(16, columns - 100);
-  const promptText = truncateOneLine(payload.promptText || '(empty prompt)', promptWidth);
-  const responseText = truncateOneLine(payload.responseText || '(empty response)', responseWidth);
-  const requestedModel = payload.requestedModel || '-';
-  const selectedModel = payload.selectedModel || payload.requestedModel || '-';
-  const promptChars = formatCompactCount(payload.promptChars ?? 0);
-  const maskedKey = maskUpstreamKey(payload.selectedKeyValue);
-  const requestPart = chalk.blue(`-> ${promptChars} ${requestedModel} (${maskedKey}/${selectedModel}) ${promptText}`);
-  const tokenSuffix = formatTokenSuffix(payload.inputTokens, payload.outputTokens);
-
-  if (payload.errorType || payload.status === 'upstream_error' || payload.status === 'auth_error' || payload.status === 'no_candidate') {
-    const errorState = payload.errorType || payload.status || 'error';
-    const errorMessage = truncateOneLine(payload.errorMessage || responseText, responseWidth);
-    const failurePart = `${chalk.gray('<< ')}${chalk.red(errorState)}${errorMessage ? ` ${chalk.gray(errorMessage)}` : ''}`;
-    return [requestPart, failurePart, tokenSuffix].filter(Boolean).join(' ');
-  }
-
-  const successPart = `${chalk.gray('<< ')}${chalk.gray(responseText)}`;
-  return [requestPart, successPart, tokenSuffix].filter(Boolean).join(' ');
 }
 
 export function createUpstreamError(url, statusCode, body) {
@@ -221,7 +193,7 @@ export function createUpstreamError(url, statusCode, body) {
   return error;
 }
 
-function extractEchoPrompt(request) {
+export function extractPromptText(request) {
   const userMessage = [...(request?.messages ?? [])]
     .reverse()
     .find((message) => message?.role === 'user');
@@ -280,6 +252,15 @@ function normalizeOneLine(value) {
   return String(value ?? '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function resetDumpState(dump) {
+  dump.headerWritten = false;
+  dump.responseWritten = false;
+  dump.responseLength = 0;
+  dump.responseTruncated = false;
+  dump.pendingWhitespace = false;
+  dump.finished = false;
 }
 
 function classifyErrorType(statusCode, body, message) {

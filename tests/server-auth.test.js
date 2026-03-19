@@ -101,5 +101,5 @@ test('dump prints a single formatted auth failure line', async (t) => {
   });
 
   assert.equal(response.statusCode, 401);
-  assert.equal(stripAnsi(dumpOutput.join('')), '-> 5 qwen3.5-plus (-/qwen3.5-plus) hello << auth_error Unknown virtual key\n');
+  assert.equal(stripAnsi(dumpOutput.join('')), '-> qwen3.5-plus (-/qwen3.5-plus) hello [5]\n<< auth_error Unknown virtual key\n');
 });

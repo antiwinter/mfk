@@ -2,11 +2,11 @@ import { getEngine } from './index.js';
 import { createIR, collectEvents } from '../ir.js';
 import {
   buildProviderUrl,
-  createProbeEchoOptions,
-  emitProbeError,
-  emitProbeRequestLine,
-  emitProbeResponse,
-  finalizeProbeEcho,
+  createDumpOptions,
+  emitDumpError,
+  emitDumpRequestLine,
+  emitDumpResponse,
+  finalizeDump,
   uniqueModels,
 } from '../lib/http.js';
 
@@ -58,8 +58,8 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
     ],
   });
 
-  const probeEcho = createProbeEchoOptions(handlers.echo);
-  emitProbeRequestLine(probeEcho, {
+  const dump = createDumpOptions(handlers.echo);
+  emitDumpRequestLine(dump, {
     requestedModel: model,
     selectedModel: model,
     selectedKeyValue: key.value,
@@ -80,7 +80,7 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
     for await (const event of events) {
       if (event.type === 'delta') {
         accumulated += event.text;
-        emitProbeResponse(probeEcho, event.text);
+        emitDumpResponse(dump, event.text);
       } else if (event.type === 'message') {
         message = event;
       }
@@ -99,12 +99,12 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
     const fetchBody = engine.buildReq(fallbackIr);
     const response = await fetch(fetchUrl, { method: 'POST', headers: fetchHeaders, body: JSON.stringify(fetchBody) });
     message = await collectEvents(engine.parse(response, fetchUrl));
-    emitProbeResponse(probeEcho, message.content);
+    emitDumpResponse(dump, message.content);
     if (!message?.content && error) {
-      emitProbeError(probeEcho, error.errorType ?? 'retryable', error.message);
+      emitDumpError(dump, error.errorType ?? 'retryable', error.message);
     }
   }
-  finalizeProbeEcho(probeEcho);
+  finalizeDump(dump, message?.usage);
 
   return {
     response: message,

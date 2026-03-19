@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { captureDumpPrompt, createDumpOptions, emitDumpLine } from '../lib/http.js';
+import { createDumpOptions, emitDumpError, emitDumpRequestLine, extractPromptText, finalizeDump } from '../lib/http.js';
 import { extractVirtualKeyToken } from '../lib/virtualKey.js';
 import { openaiEngine, anthropicEngine, googleEngine } from '../engines/index.js';
 import { getCapabilityModels } from '../lib/models.js';
@@ -120,9 +120,6 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
   });
   const body = request.body ?? {};
   const previewIr = tryParseIr(inboundEngine, body, parseParams);
-  if (previewIr) {
-    captureDumpPrompt(dump, previewIr);
-  }
 
   try {
     const token = extractVirtualKeyToken(request.headers);
@@ -167,12 +164,6 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
         return reply;
       } catch (error) {
         debugLog('stream_error', { message: error.message, statusCode: error.statusCode ?? 500 });
-        emitDumpLine(dump, {
-          requestedModel: ir.model,
-          status: error.errorType ?? 'upstream_error',
-          errorType: error.errorType ?? 'upstream_error',
-          errorMessage: error.message,
-        });
         reply.code(error.statusCode ?? 500);
         return buildErrorResponse(inboundEngine.type, error);
       }
@@ -189,12 +180,18 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
     });
   } catch (error) {
     debugLog('error', { engine: inboundEngine.type, message: error.message, statusCode: error.statusCode ?? 400 });
-    emitDumpLine(dump, {
-      requestedModel: previewIr?.model ?? null,
-      status: error.errorType ?? 'request_error',
-      errorType: error.errorType ?? 'request_error',
-      errorMessage: error.message,
-    });
+    if (previewIr) {
+      const promptText = extractPromptText(previewIr);
+      emitDumpRequestLine(dump, {
+        requestedModel: previewIr.model,
+        selectedModel: previewIr.model,
+        request: previewIr,
+        promptText,
+        promptChars: promptText.length,
+      });
+    }
+    emitDumpError(dump, error.errorType ?? 'request_error', error.message);
+    finalizeDump(dump);
     reply.code(error.statusCode ?? 400);
     return buildErrorResponse(inboundEngine.type, error);
   }
