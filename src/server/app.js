@@ -121,7 +121,7 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
       engine: inboundEngine.type,
       model: ir.model,
       stream: ir.stream,
-      username: virtualKey.alias,
+      alias: virtualKey.alias,
     });
 
     if (!ir.model) {
@@ -137,8 +137,7 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
           ir,
           reply,
           inboundEngine,
-          username: virtualKey.alias,
-          virtualKey: virtualKey.virtual_key,
+          alias: virtualKey.alias,
           originalBody: body,
         });
         return reply;
@@ -154,8 +153,7 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
       db,
       ir,
       inboundEngine,
-      username: virtualKey.alias,
-      virtualKey: virtualKey.virtual_key,
+      alias: virtualKey.alias,
       originalBody: body,
     });
   } catch (error) {

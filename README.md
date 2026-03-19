@@ -19,6 +19,8 @@
 npm install
 ```
 
+Draft-state note: schema changes are not migrated. If the SQLite schema changes, delete the local database file at `database.path` and let `mfk` recreate it.
+
 ## Configuration
 
 The default config file is `mfk.config.json`.

@@ -87,6 +87,9 @@ export const anthropicEngine = {
     let model = '';
     let stopReason = 'stop';
     let usage = {};
+    const setUsage = (nextUsage) => {
+      usage = typeof nextUsage === 'function' ? nextUsage(usage) : nextUsage;
+    };
 
     while (true) {
       const { value, done } = await reader.read();
@@ -97,12 +100,12 @@ export const anthropicEngine = {
       buffer = events.pop() ?? '';
 
       for (const event of events) {
-        yield* processAnthropicSseEvent(event, (m) => { model = m; }, (s) => { stopReason = s; }, (u) => { usage = u; });
+        yield* processAnthropicSseEvent(event, (m) => { model = m; }, (s) => { stopReason = s; }, setUsage);
       }
     }
 
     if (buffer.trim()) {
-      yield* processAnthropicSseEvent(buffer, (m) => { model = m; }, (s) => { stopReason = s; }, (u) => { usage = u; });
+      yield* processAnthropicSseEvent(buffer, (m) => { model = m; }, (s) => { stopReason = s; }, setUsage);
     }
 
     yield createMessage({ content: '', model, finishReason: stopReason, usage });

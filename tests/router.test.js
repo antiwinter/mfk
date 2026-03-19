@@ -20,7 +20,7 @@ function createProvider({
     headers: {},
     models,
     key: {
-      name: 'primary',
+      name: `${id}-key`,
       value: `${id}-secret`,
       priority: order,
     },
@@ -29,8 +29,8 @@ function createProvider({
 
 function createDb(states = {}) {
   return {
-    getKeyState(providerId, keyName) {
-      return states[`${providerId}:${keyName}`] ?? null;
+    getKeyState(keyName) {
+      return states[keyName] ?? null;
     },
   };
 }
@@ -68,7 +68,7 @@ test('selectCandidates falls back to the nearest configured model tier when the 
     ],
   };
   const db = createDb({
-    'dashscope:primary': {
+    'dashscope-key': {
       disabled_until: '2999-01-01T00:00:00.000Z',
     },
   });

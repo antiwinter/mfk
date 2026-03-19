@@ -4,7 +4,6 @@ import { uniqueModels } from '../lib/http.js';
 
 const DEFAULT_QUOTA_RESET = 'daily';
 const DEFAULT_FAILURE_RESET = 'hourly';
-const PRIMARY_KEY_NAME = 'primary';
 
 const DEFAULT_SERVER = {
   host: '127.0.0.1',
@@ -117,8 +116,10 @@ function normalizeProviderEntry(apiKey, provider, providerIndex) {
 }
 
 export function buildRuntimeProvider({ apiKey, baseUrl, type, quotaReset, failureReset, models, order }) {
+  const providerId = createProviderId(baseUrl, apiKey);
+
   return {
-    id: createProviderId(baseUrl, apiKey),
+    id: providerId,
     apiKey,
     type: normalizeProviderType(type),
     baseUrl,
@@ -129,7 +130,7 @@ export function buildRuntimeProvider({ apiKey, baseUrl, type, quotaReset, failur
     headers: {},
     models: Array.isArray(models) ? uniqueModels(models).sort(compareText) : [],
     key: {
-      name: PRIMARY_KEY_NAME,
+      name: providerId,
       value: apiKey,
       priority: order,
     },

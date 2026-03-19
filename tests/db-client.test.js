@@ -7,8 +7,7 @@ import { createDatabase } from '../src/db/client.js';
 
 function createTempDb() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mfk-db-'));
-  const dbPath = path.join(tempDir, 'test.sqlite');
-  return createDatabase(dbPath);
+  return createDatabase(path.join(tempDir, 'test.sqlite'));
 }
 
 test('virtual key records can be created and looked up', () => {
@@ -82,6 +81,34 @@ test('virtual keys can be deleted by alias or token', () => {
     assert.equal(removedByAlias?.virtual_key, 'mfk-111111111111111111111111');
     assert.equal(removedByToken?.alias, 'bravo');
     assert.equal(db.listVirtualKeys().length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('request logs store alias, selected key, and token counts', () => {
+  const db = createTempDb();
+
+  try {
+    db.logRequest({
+      requestedAt: '2026-03-19T00:00:00.000Z',
+      alias: 'alice',
+      requestModel: 'anthropic/claude-sonnet-4-6',
+      selectedKey: 'anthropic-key',
+      status: 'success',
+      latencyMs: 321,
+      inputTokens: 123,
+      outputTokens: 45,
+    });
+
+    const [record] = db.listRequestLogs();
+    assert.equal(record.alias, 'alice');
+    assert.equal(record.request_model, 'anthropic/claude-sonnet-4-6');
+    assert.equal(record.selected_key, 'anthropic-key');
+    assert.equal(record.status, 'success');
+    assert.equal(record.latency_ms, 321);
+    assert.equal(record.input_tokens, 123);
+    assert.equal(record.output_tokens, 45);
   } finally {
     db.close();
   }

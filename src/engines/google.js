@@ -92,6 +92,9 @@ export const googleEngine = {
     const decoder = new TextDecoder();
     const reader = response.body.getReader();
     let buffer = '';
+    let model = '';
+    let finishReason = 'stop';
+    let usage = {};
 
     while (true) {
       const { value, done } = await reader.read();
@@ -102,15 +105,25 @@ export const googleEngine = {
       buffer = events.pop() ?? '';
 
       for (const event of events) {
-        yield* processGoogleSseEvent(event);
+        yield* processGoogleSseEvent(
+          event,
+          (nextModel) => { model = nextModel; },
+          (nextReason) => { finishReason = nextReason; },
+          (nextUsage) => { usage = nextUsage; },
+        );
       }
     }
 
     if (buffer.trim()) {
-      yield* processGoogleSseEvent(buffer);
+      yield* processGoogleSseEvent(
+        buffer,
+        (nextModel) => { model = nextModel; },
+        (nextReason) => { finishReason = nextReason; },
+        (nextUsage) => { usage = nextUsage; },
+      );
     }
 
-    yield createMessage({ content: '' });
+    yield createMessage({ content: '', model, finishReason, usage });
   },
 
   buildRes(irMessage) {
@@ -197,7 +210,7 @@ function messageFromGoogleJson(data) {
   });
 }
 
-function* processGoogleSseEvent(event) {
+function* processGoogleSseEvent(event, setModel, setFinishReason, setUsage) {
   const lines = event.split('\n').map((l) => l.trim()).filter(Boolean);
 
   for (const line of lines) {
@@ -206,6 +219,20 @@ function* processGoogleSseEvent(event) {
     if (!payloadText || payloadText === '[DONE]') continue;
 
     const data = JSON.parse(payloadText);
+    const candidate = Array.isArray(data?.candidates) ? data.candidates[0] : null;
+    if (candidate?.modelVersion) {
+      setModel(candidate.modelVersion);
+    }
+    if (candidate?.finishReason) {
+      setFinishReason(candidate.finishReason);
+    }
+    if (data?.usageMetadata) {
+      setUsage({
+        inputTokens: data.usageMetadata.promptTokenCount,
+        outputTokens: data.usageMetadata.candidatesTokenCount,
+      });
+    }
+
     const text = extractGoogleText(data);
     if (text) {
       yield createDelta(text);

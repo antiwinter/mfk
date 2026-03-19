@@ -20,7 +20,7 @@ function createProvider({
     headers: {},
     models,
     key: {
-      name: 'primary',
+      name: `${id}-key`,
       value: `${id}-secret`,
       priority: order,
     },
