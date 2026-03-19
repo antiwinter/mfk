@@ -1,31 +1,4 @@
-const LEGACY_PREFIX = 'sk-mfk-';
-const SHORT_PREFIX = 'mfk-';
-
-export function parseVirtualKey(input) {
-  const token = extractToken(input);
-
-  if (token.startsWith(LEGACY_PREFIX)) {
-    const username = token.slice(LEGACY_PREFIX.length);
-    if (!username) {
-      throw new Error('Virtual key username is empty');
-    }
-
-    return { token, username };
-  }
-
-  if (token.startsWith(SHORT_PREFIX)) {
-    const username = token.slice(SHORT_PREFIX.length);
-    if (!username) {
-      throw new Error('Virtual key username is empty');
-    }
-
-    return { token, username };
-  }
-
-  throw new Error('Virtual key must start with sk-mfk- or mfk-');
-}
-
-function extractToken(input) {
+export function extractVirtualKeyToken(input) {
   if (!input) {
     throw new Error('Missing authentication token');
   }

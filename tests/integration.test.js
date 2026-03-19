@@ -14,6 +14,7 @@ async function getServer() {
   const { config, dir } = await loadConfig();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mfk-integ-'));
   const db = createDatabase(path.join(tmpDir, 'test.sqlite'));
+  db.createVirtualKey('integration-test', VKEY);
   const app = createServer({ config, db });
   const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
   _server = { app, db, baseUrl };
@@ -27,7 +28,7 @@ test.after(async () => {
   }
 });
 
-const VKEY = 'mfk-test';
+const VKEY = 'mfk-0123456789abcdef01234567';
 const PROMPT = 'Reply with only the word "pong".';
 const MAX_TOKENS = 16;
 const MODELS = ['anthropic/claude-sonnet-4-6', 'qwen3.5-plus'];
@@ -160,7 +161,7 @@ for (const model of MODELS) {
   for (const inbound of INBOUNDS) {
     for (const stream of [false, true]) {
       const label = `${inbound.name} → ${model} ${stream ? 'stream' : 'non-stream'}`;
-      test(`integration: ${label}`, { timeout: 30_000 }, async () => {
+      test(`integration: ${label}`, { timeout: 60_000 }, async () => {
         const { baseUrl } = await getServer();
         const [url, opts] = inbound.req(baseUrl, model, stream);
         const res = await fetch(url, opts);

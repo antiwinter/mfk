@@ -1,5 +1,8 @@
 import { Command } from 'commander';
 import { registerAddCommand } from './commands/add.js';
+import { registerGenCommand } from './commands/gen.js';
+import { registerListCommand } from './commands/list.js';
+import { registerRmCommand } from './commands/rm.js';
 import { registerServeCommand } from './commands/serve.js';
 import { registerTestCommand } from './commands/test.js';
 
@@ -14,6 +17,9 @@ export function buildProgram() {
   registerServeCommand(program);
   registerTestCommand(program);
   registerAddCommand(program);
+  registerGenCommand(program);
+  registerListCommand(program);
+  registerRmCommand(program);
 
   return program;
 }

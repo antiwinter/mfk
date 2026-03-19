@@ -48,6 +48,36 @@ export function createDatabase(dbPath) {
         latency_ms
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
+    insertVirtualKey: db.prepare(`
+      INSERT INTO virtual_keys (
+        alias,
+        virtual_key,
+        created_at
+      ) VALUES (?, ?, ?)
+    `),
+    getVirtualKeyByAlias: db.prepare(`
+      SELECT *
+      FROM virtual_keys
+      WHERE alias = ?
+    `),
+    getVirtualKeyByToken: db.prepare(`
+      SELECT *
+      FROM virtual_keys
+      WHERE virtual_key = ?
+    `),
+    listVirtualKeys: db.prepare(`
+      SELECT *
+      FROM virtual_keys
+      ORDER BY alias ASC
+    `),
+    deleteVirtualKeyByAlias: db.prepare(`
+      DELETE FROM virtual_keys
+      WHERE alias = ?
+    `),
+    deleteVirtualKeyByToken: db.prepare(`
+      DELETE FROM virtual_keys
+      WHERE virtual_key = ?
+    `),
   };
 
   return {
@@ -106,6 +136,37 @@ export function createDatabase(dbPath) {
         record.latencyMs ?? null,
       );
     },
+    createVirtualKey(alias, virtualKey, createdAt = new Date().toISOString()) {
+      statements.insertVirtualKey.run(alias, virtualKey, createdAt);
+      return statements.getVirtualKeyByAlias.get(alias) ?? null;
+    },
+    findVirtualKeyByAlias(alias) {
+      return statements.getVirtualKeyByAlias.get(alias) ?? null;
+    },
+    findVirtualKeyByToken(virtualKey) {
+      return statements.getVirtualKeyByToken.get(virtualKey) ?? null;
+    },
+    listVirtualKeys() {
+      return statements.listVirtualKeys.all();
+    },
+    deleteVirtualKeyByAlias(alias) {
+      const existing = statements.getVirtualKeyByAlias.get(alias) ?? null;
+      if (!existing) {
+        return null;
+      }
+
+      statements.deleteVirtualKeyByAlias.run(alias);
+      return existing;
+    },
+    deleteVirtualKeyByToken(virtualKey) {
+      const existing = statements.getVirtualKeyByToken.get(virtualKey) ?? null;
+      if (!existing) {
+        return null;
+      }
+
+      statements.deleteVirtualKeyByToken.run(virtualKey);
+      return existing;
+    },
     close() {
       db.close();
     },
@@ -139,6 +200,12 @@ function initialize(db) {
       error_type TEXT,
       error_message TEXT,
       latency_ms INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS virtual_keys (
+      alias TEXT PRIMARY KEY,
+      virtual_key TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
     );
   `);
 }

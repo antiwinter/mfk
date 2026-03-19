@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { parseVirtualKey } from '../lib/virtualKey.js';
+import { extractVirtualKeyToken } from '../lib/virtualKey.js';
 import { openaiEngine, anthropicEngine, googleEngine } from '../engines/index.js';
 import { getCapabilityModels } from '../lib/models.js';
 import { route, routeStream } from '../router.js';
@@ -101,7 +101,15 @@ export function createServer({ config, db }) {
 
 async function handleCompletion(request, reply, inboundEngine, config, db, parseParams) {
   try {
-    const virtualKey = parseVirtualKey(request.headers);
+    const token = extractVirtualKeyToken(request.headers);
+    const virtualKey = db.findVirtualKeyByToken(token);
+    if (!virtualKey) {
+      const error = new Error('Unknown virtual key');
+      error.statusCode = 401;
+      error.errorType = 'auth_error';
+      throw error;
+    }
+
     const body = request.body ?? {};
     const ir = parseParams
       ? inboundEngine.parseReq(body, parseParams)
@@ -113,7 +121,7 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
       engine: inboundEngine.type,
       model: ir.model,
       stream: ir.stream,
-      username: virtualKey.username,
+      username: virtualKey.alias,
     });
 
     if (!ir.model) {
@@ -129,8 +137,8 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
           ir,
           reply,
           inboundEngine,
-          username: virtualKey.username,
-          virtualKey: virtualKey.token,
+          username: virtualKey.alias,
+          virtualKey: virtualKey.virtual_key,
           originalBody: body,
         });
         return reply;
@@ -146,8 +154,8 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
       db,
       ir,
       inboundEngine,
-      username: virtualKey.username,
-      virtualKey: virtualKey.token,
+      username: virtualKey.alias,
+      virtualKey: virtualKey.virtual_key,
       originalBody: body,
     });
   } catch (error) {

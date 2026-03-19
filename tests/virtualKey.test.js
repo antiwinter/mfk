@@ -1,28 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseVirtualKey } from '../src/lib/virtualKey.js';
+import { extractVirtualKeyToken } from '../src/lib/virtualKey.js';
 
-test('parseVirtualKey extracts the username from a legacy virtual key', () => {
-  const parsed = parseVirtualKey('Bearer sk-mfk-alice');
+test('extractVirtualKeyToken extracts a bearer token', () => {
+  const token = extractVirtualKeyToken('Bearer mfk-abcdef1234567890abcdef12');
 
-  assert.equal(parsed.token, 'sk-mfk-alice');
-  assert.equal(parsed.username, 'alice');
+  assert.equal(token, 'mfk-abcdef1234567890abcdef12');
 });
 
-test('parseVirtualKey extracts the username from a short virtual key', () => {
-  const parsed = parseVirtualKey('Bearer mfk-bob');
+test('extractVirtualKeyToken works with x-api-key header', () => {
+  const token = extractVirtualKeyToken({ 'x-api-key': 'mfk-abcdef1234567890abcdef12' });
 
-  assert.equal(parsed.token, 'mfk-bob');
-  assert.equal(parsed.username, 'bob');
+  assert.equal(token, 'mfk-abcdef1234567890abcdef12');
 });
 
-test('parseVirtualKey works with x-api-key header', () => {
-  const parsed = parseVirtualKey({ 'x-api-key': 'sk-mfk-alice' });
-
-  assert.equal(parsed.token, 'sk-mfk-alice');
-  assert.equal(parsed.username, 'alice');
+test('extractVirtualKeyToken rejects malformed bearer headers', () => {
+  assert.throws(() => extractVirtualKeyToken('Basic something'), /Authorization header must use Bearer authentication/);
 });
 
-test('parseVirtualKey rejects non-mfk tokens', () => {
-  assert.throws(() => parseVirtualKey('Bearer sk-other-alice'), /Virtual key must start with sk-mfk-/);
+test('extractVirtualKeyToken rejects missing headers', () => {
+  assert.throws(() => extractVirtualKeyToken({}), /Missing authentication header/);
 });
