@@ -2,6 +2,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 
+export function normalizeRequestLogRecord(record) {
+  return {
+    requested_at: record.requestedAt ?? new Date().toISOString(),
+    alias: record.alias,
+    request_model: record.requestModel,
+    selected_key: record.selectedKey ?? null,
+    status: record.status,
+    error_type: record.errorType ?? null,
+    error_message: record.errorMessage ?? null,
+    latency_ms: record.latencyMs ?? null,
+    input_tokens: record.inputTokens ?? null,
+    output_tokens: record.outputTokens ?? null,
+  };
+}
+
 export function createDatabase(dbPath) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
@@ -123,18 +138,21 @@ export function createDatabase(dbPath) {
       return statements.getKeyState.get(keyName) ?? null;
     },
     logRequest(record) {
+      const row = normalizeRequestLogRecord(record);
       statements.insertRequestLog.run(
-        record.requestedAt ?? new Date().toISOString(),
-        record.alias,
-        record.requestModel,
-        record.selectedKey ?? null,
-        record.status,
-        record.errorType ?? null,
-        record.errorMessage ?? null,
-        record.latencyMs ?? null,
-        record.inputTokens ?? null,
-        record.outputTokens ?? null,
+        row.requested_at,
+        row.alias,
+        row.request_model,
+        row.selected_key,
+        row.status,
+        row.error_type,
+        row.error_message,
+        row.latency_ms,
+        row.input_tokens,
+        row.output_tokens,
       );
+
+      return row;
     },
     listRequestLogs() {
       return statements.listRequestLogs.all();

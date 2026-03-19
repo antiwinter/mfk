@@ -1,6 +1,14 @@
 import { getEngine } from './index.js';
 import { createIR, collectEvents } from '../ir.js';
-import { buildProviderUrl, createEchoOptions, emitEchoResponse, finalizeEcho, uniqueModels } from '../lib/http.js';
+import {
+  buildProviderUrl,
+  createProbeEchoOptions,
+  emitProbeError,
+  emitProbeRequestLine,
+  emitProbeResponse,
+  finalizeProbeEcho,
+  uniqueModels,
+} from '../lib/http.js';
 
 const DETECTION_PRIORITY = ['anthropic', 'openai', 'google'];
 
@@ -43,30 +51,36 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
     model,
     temperature: 0,
     maxTokens: 64,
-    stream: false,
+    stream: true,
     messages: [
       { role: 'system', content: 'Reply briefly and plainly.' },
       { role: 'user', content: probe.prompt },
     ],
   });
 
-  const echo = createEchoOptions(handlers.echo);
+  const probeEcho = createProbeEchoOptions(handlers.echo);
+  emitProbeRequestLine(probeEcho, {
+    requestedModel: model,
+    selectedModel: model,
+    selectedKeyValue: key.value,
+    promptText: probe.prompt,
+    promptChars: probe.prompt.length,
+  });
 
   // Try streaming first, fall back to non-stream
   let message;
   try {
-    const streamIr = { ...ir, stream: true };
-    const fetchUrl = buildProviderUrl(provider.baseUrl, engine.endpoint(streamIr, key));
+    const fetchUrl = buildProviderUrl(provider.baseUrl, engine.endpoint(ir, key));
     const fetchHeaders = engine.buildHeaders(provider, key);
-    const fetchBody = engine.buildReq(streamIr);
+    const fetchBody = engine.buildReq(ir);
     const response = await fetch(fetchUrl, { method: 'POST', headers: fetchHeaders, body: JSON.stringify(fetchBody) });
-    const events = engine.parse(response, url);
+    const events = engine.parse(response, fetchUrl);
     let accumulated = '';
 
     for await (const event of events) {
       if (event.type === 'delta') {
         accumulated += event.text;
-        emitEchoResponse(echo, event.text);
+        emitProbeResponse(probeEcho, event.text);
       } else if (event.type === 'message') {
         message = event;
       }
@@ -79,15 +93,18 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
     }
   } catch (error) {
     // Fall back to non-stream
-    const fetchUrl = buildProviderUrl(provider.baseUrl, engine.endpoint(ir, key));
+    const fallbackIr = { ...ir, stream: false };
+    const fetchUrl = buildProviderUrl(provider.baseUrl, engine.endpoint(fallbackIr, key));
     const fetchHeaders = engine.buildHeaders(provider, key);
-    const fetchBody = engine.buildReq(ir);
+    const fetchBody = engine.buildReq(fallbackIr);
     const response = await fetch(fetchUrl, { method: 'POST', headers: fetchHeaders, body: JSON.stringify(fetchBody) });
-    message = await collectEvents(engine.parse(response, url));
-    emitEchoResponse(echo, message.content);
+    message = await collectEvents(engine.parse(response, fetchUrl));
+    emitProbeResponse(probeEcho, message.content);
+    if (!message?.content && error) {
+      emitProbeError(probeEcho, error.errorType ?? 'retryable', error.message);
+    }
   }
-
-  finalizeEcho(echo);
+  finalizeProbeEcho(probeEcho);
 
   return {
     response: message,

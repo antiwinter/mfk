@@ -77,6 +77,12 @@ Start the local gateway:
 mfk serve
 ```
 
+Print a colored one-line dump for each completed request while serving:
+
+```bash
+mfk serve --dump
+```
+
 Generate a local virtual key for an alias:
 
 ```bash
@@ -143,3 +149,4 @@ Notes:
 - Only virtual keys present in the local SQLite database are accepted for completion requests.
 - Streaming is not implemented in this version.
 - Request attempts are recorded in SQLite at the configured database path.
+- `mfk serve --dump` prints a single colored line per request with requested model, selected model, masked upstream key, prompt snippet, response or error snippet, and compact token counts.

@@ -1,11 +1,13 @@
 import Fastify from 'fastify';
+import { captureDumpPrompt, createDumpOptions, emitDumpLine } from '../lib/http.js';
 import { extractVirtualKeyToken } from '../lib/virtualKey.js';
 import { openaiEngine, anthropicEngine, googleEngine } from '../engines/index.js';
 import { getCapabilityModels } from '../lib/models.js';
 import { route, routeStream } from '../router.js';
 
-export function createServer({ config, db }) {
+export function createServer({ config, db, dump = false, dumpWrite, onRequestLog }) {
   const app = Fastify({ logger: false });
+  const dumpLineWriter = dumpWrite ?? ((text) => process.stdout.write(text));
 
   app.addHook('onRequest', async (request) => {
     debugLog('incoming_request', {
@@ -61,11 +63,19 @@ export function createServer({ config, db }) {
   // --- Completion endpoints ---
 
   app.post('/v1/chat/completions', async (request, reply) => {
-    return handleCompletion(request, reply, openaiEngine, config, db);
+    return handleCompletion(request, reply, openaiEngine, config, db, null, {
+      dump,
+      dumpWrite: dumpLineWriter,
+      onRequestLog,
+    });
   });
 
   app.post('/v1/messages', async (request, reply) => {
-    return handleCompletion(request, reply, anthropicEngine, config, db);
+    return handleCompletion(request, reply, anthropicEngine, config, db, null, {
+      dump,
+      dumpWrite: dumpLineWriter,
+      onRequestLog,
+    });
   });
 
   app.post('/v1beta/models/:modelAction', async (request, reply) => {
@@ -87,6 +97,10 @@ export function createServer({ config, db }) {
     return handleCompletion(request, reply, googleEngine, config, db, {
       model,
       stream: action === 'streamGenerateContent',
+    }, {
+      dump,
+      dumpWrite: dumpLineWriter,
+      onRequestLog,
     });
   });
 
@@ -99,7 +113,17 @@ export function createServer({ config, db }) {
   return app;
 }
 
-async function handleCompletion(request, reply, inboundEngine, config, db, parseParams) {
+async function handleCompletion(request, reply, inboundEngine, config, db, parseParams, runtime = {}) {
+  const dump = createDumpOptions({
+    enabled: runtime.dump,
+    write: runtime.dumpWrite,
+  });
+  const body = request.body ?? {};
+  const previewIr = tryParseIr(inboundEngine, body, parseParams);
+  if (previewIr) {
+    captureDumpPrompt(dump, previewIr);
+  }
+
   try {
     const token = extractVirtualKeyToken(request.headers);
     const virtualKey = db.findVirtualKeyByToken(token);
@@ -110,10 +134,9 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
       throw error;
     }
 
-    const body = request.body ?? {};
-    const ir = parseParams
+    const ir = previewIr ?? (parseParams
       ? inboundEngine.parseReq(body, parseParams)
-      : inboundEngine.parseReq(body);
+      : inboundEngine.parseReq(body));
 
     ir.provider = request.headers['x-mfk-provider'] ?? ir.provider;
 
@@ -138,11 +161,18 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
           reply,
           inboundEngine,
           alias: virtualKey.alias,
-          originalBody: body,
+          dump,
+          onRequestLog: runtime.onRequestLog,
         });
         return reply;
       } catch (error) {
         debugLog('stream_error', { message: error.message, statusCode: error.statusCode ?? 500 });
+        emitDumpLine(dump, {
+          requestedModel: ir.model,
+          status: error.errorType ?? 'upstream_error',
+          errorType: error.errorType ?? 'upstream_error',
+          errorMessage: error.message,
+        });
         reply.code(error.statusCode ?? 500);
         return buildErrorResponse(inboundEngine.type, error);
       }
@@ -154,12 +184,29 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
       ir,
       inboundEngine,
       alias: virtualKey.alias,
-      originalBody: body,
+      dump,
+      onRequestLog: runtime.onRequestLog,
     });
   } catch (error) {
     debugLog('error', { engine: inboundEngine.type, message: error.message, statusCode: error.statusCode ?? 400 });
+    emitDumpLine(dump, {
+      requestedModel: previewIr?.model ?? null,
+      status: error.errorType ?? 'request_error',
+      errorType: error.errorType ?? 'request_error',
+      errorMessage: error.message,
+    });
     reply.code(error.statusCode ?? 400);
     return buildErrorResponse(inboundEngine.type, error);
+  }
+}
+
+function tryParseIr(inboundEngine, body, parseParams) {
+  try {
+    return parseParams
+      ? inboundEngine.parseReq(body, parseParams)
+      : inboundEngine.parseReq(body);
+  } catch {
+    return null;
   }
 }
 

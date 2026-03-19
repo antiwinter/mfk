@@ -1,3 +1,6 @@
+import chalk from 'chalk';
+import { millify } from 'millify';
+
 export async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
   const rawText = await response.text();
@@ -50,51 +53,159 @@ export async function readJsonError(response, url) {
   throw createUpstreamError(url, response.status, body);
 }
 
-export function emitEchoPrompt(echo, request) {
-  if (!echo?.enabled || echo.promptWritten) {
-    return;
-  }
-
-  const prompt = extractEchoPrompt(request);
-  echo.write(`-> ${prompt}\n`);
-  echo.write('<< ');
-  echo.promptWritten = true;
-}
-
-export function emitEchoResponse(echo, text) {
-  if (!echo?.enabled || !text) {
-    return;
-  }
-
-  echo.write(text);
-  echo.responseWritten = true;
-}
-
-export function finalizeEcho(echo) {
-  if (!echo?.enabled || echo.finished) {
-    return;
-  }
-
-  if (!echo.responseWritten) {
-    echo.write('(empty response)');
-  }
-
-  echo.write('\n');
-  echo.finished = true;
-}
-
-export function createEchoOptions(overrides = {}) {
+export function createDumpOptions(overrides = {}) {
   return {
     enabled: Boolean(overrides.enabled),
     write: overrides.write ?? ((text) => process.stdout.write(text)),
-    promptWritten: false,
-    responseWritten: false,
+    columns: overrides.columns ?? process.stdout.columns ?? 160,
+    promptText: '',
+    promptChars: 0,
+    responseText: '',
     finished: false,
   };
 }
 
+export function createProbeEchoOptions(overrides = {}) {
+  return {
+    enabled: Boolean(overrides.enabled),
+    write: overrides.write ?? ((text) => process.stdout.write(text)),
+    columns: overrides.columns ?? process.stdout.columns ?? 160,
+    headerWritten: false,
+    finished: false,
+    responseWritten: false,
+    pendingWhitespace: false,
+  };
+}
+
+export function captureDumpPrompt(dump, request) {
+  if (!dump?.enabled || dump.promptChars > 0) {
+    return;
+  }
+
+  const prompt = extractEchoPrompt(request);
+  dump.promptText = prompt;
+  dump.promptChars = prompt.length;
+}
+
+export function captureDumpResponse(dump, text) {
+  if (!dump?.enabled || !text) {
+    return;
+  }
+
+  dump.responseText += text;
+}
+
+export function emitProbeRequestLine(probeEcho, payload) {
+  if (!probeEcho?.enabled || probeEcho.headerWritten) {
+    return;
+  }
+
+  const columns = probeEcho.columns ?? process.stdout.columns ?? 160;
+  const promptWidth = Math.max(16, columns - 100);
+  const promptText = truncateOneLine(payload.promptText || '(empty prompt)', promptWidth);
+  const requestedModel = payload.requestedModel || '-';
+  const selectedModel = payload.selectedModel || requestedModel;
+  const maskedKey = maskUpstreamKey(payload.selectedKeyValue);
+  const promptChars = formatCompactCount(payload.promptChars ?? 0);
+
+  probeEcho.write(chalk.blue(`-> ${requestedModel} (${maskedKey}/${selectedModel}) ${promptText} [${promptChars}]\n`));
+  probeEcho.write(chalk.gray('<< '));
+  probeEcho.headerWritten = true;
+}
+
+export function emitProbeResponse(probeEcho, text) {
+  if (!probeEcho?.enabled || !text) {
+    return;
+  }
+
+  const rawText = String(text ?? '');
+  const hasLeadingWhitespace = /^\s/.test(rawText);
+  const hasTrailingWhitespace = /\s$/.test(rawText);
+  const normalizedText = normalizeOneLine(rawText);
+
+  if (!normalizedText) {
+    probeEcho.pendingWhitespace ||= hasLeadingWhitespace || hasTrailingWhitespace;
+    return;
+  }
+
+  if ((probeEcho.pendingWhitespace || hasLeadingWhitespace) && probeEcho.responseWritten) {
+    probeEcho.write(chalk.gray(' '));
+  }
+
+  probeEcho.write(chalk.gray(normalizedText));
+  probeEcho.responseWritten = true;
+  probeEcho.pendingWhitespace = hasTrailingWhitespace;
+}
+
+export function emitProbeError(probeEcho, errorType, message) {
+  if (!probeEcho?.enabled || probeEcho.finished) {
+    return;
+  }
+
+  if (!probeEcho.headerWritten) {
+    probeEcho.write(chalk.gray('<< '));
+    probeEcho.headerWritten = true;
+  }
+
+  probeEcho.write(chalk.red(errorType || 'error'));
+  if (message) {
+    probeEcho.write(` ${chalk.gray(truncateOneLine(message, Math.max(16, (probeEcho.columns ?? process.stdout.columns ?? 160) - 100)))}`);
+  }
+  probeEcho.responseWritten = true;
+}
+
+export function finalizeProbeEcho(probeEcho) {
+  if (!probeEcho?.enabled || probeEcho.finished) {
+    return;
+  }
+
+  if (!probeEcho.responseWritten) {
+    probeEcho.write(chalk.gray('(empty response)'));
+  }
+
+  probeEcho.write('\n');
+  probeEcho.finished = true;
+}
+
+export function emitDumpLine(dump, payload) {
+  if (!dump?.enabled || dump.finished) {
+    return;
+  }
+
+  dump.write(`${formatDumpLine({
+    ...payload,
+    promptText: payload.promptText ?? dump.promptText,
+    promptChars: payload.promptChars ?? dump.promptChars,
+    responseText: payload.responseText ?? dump.responseText,
+  }, dump.columns)}\n`);
+  dump.finished = true;
+}
+
 export function uniqueModels(models) {
   return [...new Set((models ?? []).filter(Boolean))];
+}
+
+export function formatDumpLine(payload, columns = process.stdout.columns ?? 160) {
+  const promptWidth = Math.max(16, columns - 100);
+  const responseWidth = Math.max(16, columns - 100);
+  const promptText = truncateOneLine(payload.promptText || '(empty prompt)', promptWidth);
+  const responseText = truncateOneLine(payload.responseText || '(empty response)', responseWidth);
+  const requestedModel = payload.requestedModel || '-';
+  const selectedModel = payload.selectedModel || payload.requestedModel || '-';
+  const promptChars = formatCompactCount(payload.promptChars ?? 0);
+  const maskedKey = maskUpstreamKey(payload.selectedKeyValue);
+  const requestPart = chalk.blue(`-> ${promptChars} ${requestedModel} (${maskedKey}/${selectedModel}) ${promptText}`);
+  const tokenSuffix = formatTokenSuffix(payload.inputTokens, payload.outputTokens);
+
+  if (payload.errorType || payload.status === 'upstream_error' || payload.status === 'auth_error' || payload.status === 'no_candidate') {
+    const errorState = payload.errorType || payload.status || 'error';
+    const errorMessage = truncateOneLine(payload.errorMessage || responseText, responseWidth);
+    const failurePart = `${chalk.gray('<< ')}${chalk.red(errorState)}${errorMessage ? ` ${chalk.gray(errorMessage)}` : ''}`;
+    return [requestPart, failurePart, tokenSuffix].filter(Boolean).join(' ');
+  }
+
+  const successPart = `${chalk.gray('<< ')}${chalk.gray(responseText)}`;
+  return [requestPart, successPart, tokenSuffix].filter(Boolean).join(' ');
 }
 
 export function createUpstreamError(url, statusCode, body) {
@@ -110,16 +221,65 @@ export function createUpstreamError(url, statusCode, body) {
   return error;
 }
 
-
-
 function extractEchoPrompt(request) {
   const userMessage = [...(request?.messages ?? [])]
     .reverse()
     .find((message) => message?.role === 'user');
 
   const content = userMessage?.content ?? '';
-  const text = typeof content === 'string' ? content : '';
+  const text = typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content
+        .map((part) => part?.text ?? '')
+        .filter(Boolean)
+        .join(' ')
+      : '';
   return text || '(empty prompt)';
+}
+
+function formatCompactCount(value) {
+  return millify(Number(value ?? 0), {
+    precision: 1,
+    lowercase: true,
+  }).toLowerCase();
+}
+
+function formatTokenSuffix(inputTokens, outputTokens) {
+  if (inputTokens == null && outputTokens == null) {
+    return '';
+  }
+
+  return chalk.gray(`[${formatCompactCount(inputTokens ?? 0)} ↑, ${formatCompactCount(outputTokens ?? 0)} ↓]`);
+}
+
+function maskUpstreamKey(value) {
+  const normalized = String(value ?? '').replace(/^sk-/, '');
+  if (!normalized) {
+    return '-';
+  }
+
+  return `sk-${normalized.slice(0, 4)}...${normalized.slice(-4)}`;
+}
+
+function truncateOneLine(value, maxLength) {
+  const text = normalizeOneLine(value);
+
+  if (!text) {
+    return '';
+  }
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, Math.max(1, maxLength - 3))}...`;
+}
+
+function normalizeOneLine(value) {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function classifyErrorType(statusCode, body, message) {

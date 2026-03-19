@@ -8,6 +8,7 @@ export function registerServeCommand(program) {
     .description('Start the local MFK HTTP gateway')
     .option('--host <host>', 'Host to bind to')
     .option('--port <port>', 'Port to bind to', parseNumber)
+    .option('--dump', 'Print a colored one-line request dump to stdout')
     .action(async (options, command) => {
       const configPath = program.opts().config;
       const { config, dir } = await loadConfig(configPath);
@@ -15,7 +16,8 @@ export function registerServeCommand(program) {
       const db = createDatabase(dbPath);
       const host = options.host ?? config.server.host;
       const port = options.port ?? config.server.port;
-      const app = createServer({ config, db });
+      const dump = Boolean(options.dump);
+      const app = createServer({ config, db, dump });
 
       const close = async () => {
         await app.close();
