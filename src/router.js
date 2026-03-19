@@ -2,6 +2,7 @@ import { getEngine } from './engines/index.js';
 import { collectEvents } from './ir.js';
 import { buildProviderUrl, readJsonError } from './lib/http.js';
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
+import { normalizeModelId, resolveNearestProviderModel, resolveProviderModel } from './lib/models.js';
 
 export async function route({ config, db, ir, inboundEngine, username, virtualKey, echo, originalBody }) {
   const candidates = selectCandidates(config, db, ir);
@@ -37,9 +38,10 @@ export async function route({ config, db, ir, inboundEngine, username, virtualKe
     const startedAt = Date.now();
     try {
       const outboundEngine = getEngine(candidate.provider.type);
-      const passthrough = inboundEngine.type === outboundEngine.type;
-      const { url, headers } = buildFetch(outboundEngine, ir, candidate.provider, candidate.key);
-      const body = passthrough ? originalBody : outboundEngine.buildReq(ir);
+      const routedIr = candidate.model === ir.model ? ir : { ...ir, model: candidate.model };
+      const passthrough = inboundEngine.type === outboundEngine.type && routedIr.model === ir.model;
+      const { url, headers } = buildFetch(outboundEngine, routedIr, candidate.provider, candidate.key);
+      const body = passthrough ? originalBody : outboundEngine.buildReq(routedIr);
       const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
 
       let result;
@@ -127,8 +129,10 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, userna
 
     try {
       const outboundEngine = getEngine(candidate.provider.type);
-      const passthrough = inboundEngine.type === outboundEngine.type;
-      const streamIr = { ...ir, stream: true };
+      const streamIr = candidate.model === ir.model
+        ? { ...ir, stream: true }
+        : { ...ir, model: candidate.model, stream: true };
+      const passthrough = inboundEngine.type === outboundEngine.type && streamIr.model === ir.model;
       const { url, headers } = buildFetch(outboundEngine, streamIr, candidate.provider, candidate.key);
       const body = passthrough ? originalBody : outboundEngine.buildReq(streamIr);
       const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
@@ -224,18 +228,14 @@ async function pipeStream(reply, response) {
   }
 }
 
-function selectCandidates(config, db, ir) {
+export function selectCandidates(config, db, ir) {
   const now = new Date();
   const requestedProvider = ir.provider?.trim();
-  const candidates = [];
+  const exactCandidates = [];
+  const availableProviders = [];
 
   for (const provider of config.providers) {
     if (requestedProvider && !matchesProviderSelector(provider, requestedProvider)) {
-      continue;
-    }
-
-    const supportsModel = provider.models.length === 0 || providerSupportsModel(provider, ir.model);
-    if (!supportsModel) {
       continue;
     }
 
@@ -245,40 +245,67 @@ function selectCandidates(config, db, ir) {
       continue;
     }
 
-    candidates.push({
+    availableProviders.push({
       provider,
       key,
       keyState: state,
     });
-  }
 
-  return candidates.sort((left, right) => {
-    if (left.provider.priority !== right.provider.priority) {
-      return left.provider.priority - right.provider.priority;
+    const model = provider.models.length === 0 ? ir.model : resolveProviderModel(provider, ir.model);
+    if (!model) {
+      continue;
     }
 
-    return left.key.priority - right.key.priority;
-  });
+    exactCandidates.push({
+      provider,
+      key,
+      keyState: state,
+      model,
+      tierDistance: 0,
+    });
+  }
+
+  if (exactCandidates.length > 0 || requestedProvider) {
+    return exactCandidates.sort(compareCandidates);
+  }
+
+  const fallbackCandidates = availableProviders
+    .map((candidate) => {
+      const nearestModel = resolveNearestProviderModel(config.modelTier, candidate.provider, ir.model);
+      if (!nearestModel) {
+        return null;
+      }
+
+      return {
+        ...candidate,
+        model: nearestModel.model,
+        tierDistance: nearestModel.distance,
+        tierIndex: nearestModel.tierIndex,
+      };
+    })
+    .filter(Boolean);
+
+  return fallbackCandidates.sort(compareCandidates);
+}
+
+function compareCandidates(left, right) {
+  if ((left.tierDistance ?? 0) !== (right.tierDistance ?? 0)) {
+    return (left.tierDistance ?? 0) - (right.tierDistance ?? 0);
+  }
+
+  if ((left.tierIndex ?? Number.MAX_SAFE_INTEGER) !== (right.tierIndex ?? Number.MAX_SAFE_INTEGER)) {
+    return (left.tierIndex ?? Number.MAX_SAFE_INTEGER) - (right.tierIndex ?? Number.MAX_SAFE_INTEGER);
+  }
+
+  if (left.provider.priority !== right.provider.priority) {
+    return left.provider.priority - right.provider.priority;
+  }
+
+  return left.key.priority - right.key.priority;
 }
 
 function shouldDisable(errorType) {
   return errorType === 'quota' || errorType === 'retryable' || errorType === 'auth';
-}
-
-function providerSupportsModel(provider, requestedModel) {
-  const normalizedRequested = normalizeModelId(requestedModel);
-  return provider.models.some((model) => {
-    if (model === '*') {
-      return true;
-    }
-
-    if (model.endsWith('/*')) {
-      const prefix = model.slice(0, -1); // e.g. "anthropic/"
-      return requestedModel.startsWith(prefix) || normalizedRequested.startsWith(prefix);
-    }
-
-    return model === requestedModel || normalizeModelId(model) === normalizedRequested;
-  });
 }
 
 function matchesProviderSelector(provider, selector) {
@@ -287,10 +314,6 @@ function matchesProviderSelector(provider, selector) {
     || selector === provider.apiKey
     || selector === provider.id
     || selector === String(provider.order + 1);
-}
-
-function normalizeModelId(model) {
-  return String(model ?? '').replace(/^(anthropic|openai|google|models)\//, '');
 }
 
 function debugLog(event, payload) {

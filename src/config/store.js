@@ -15,6 +15,8 @@ const DEFAULT_DATABASE = {
   path: './mfk.sqlite',
 };
 
+const DEFAULT_MODEL_TIER = [];
+
 export function resolveConfigPath(configPath) {
   return path.resolve(process.cwd(), configPath ?? 'mfk.config.json');
 }
@@ -32,8 +34,19 @@ export function normalizeConfig(rawConfig) {
       ...DEFAULT_DATABASE,
       ...(config.database ?? {}),
     },
+    modelTier: normalizeModelTier(config.modelTier),
     providers,
   };
+}
+
+function normalizeModelTier(rawModelTier) {
+  if (!Array.isArray(rawModelTier)) {
+    return [...DEFAULT_MODEL_TIER];
+  }
+
+  return rawModelTier
+    .map((group) => uniqueModels(Array.isArray(group) ? group.filter(Boolean) : []))
+    .filter((group) => group.length > 0);
 }
 
 function normalizeProviders(rawProviders) {
@@ -139,7 +152,8 @@ export async function loadConfig(configPath) {
 export async function saveConfig(configPath, config) {
   const resolvedPath = resolveConfigPath(configPath);
   const normalized = normalizeConfig(config);
-  const serializedConfig = serializeConfig(normalized);
+  const preservedModelTier = await loadPersistedModelTier(resolvedPath);
+  const serializedConfig = serializeConfig(normalized, preservedModelTier);
   const serialized = `${JSON.stringify(serializedConfig, null, 2)}\n`;
 
   await fs.writeFile(resolvedPath, serialized, 'utf8');
@@ -168,8 +182,8 @@ export function formatProviderRef(provider) {
   return `${provider.order + 1}`;
 }
 
-function serializeConfig(config) {
-  return {
+function serializeConfig(config, preservedModelTier) {
+  const serialized = {
     server: {
       ...config.server,
     },
@@ -181,6 +195,22 @@ function serializeConfig(config) {
       serializeProvider(provider),
     ])),
   };
+
+  if (Array.isArray(preservedModelTier) && preservedModelTier.length > 0) {
+    serialized.modelTier = preservedModelTier;
+  }
+
+  return serialized;
+}
+
+async function loadPersistedModelTier(configPath) {
+  try {
+    const rawText = await fs.readFile(configPath, 'utf8');
+    const parsed = JSON.parse(rawText);
+    return Array.isArray(parsed?.modelTier) ? parsed.modelTier : null;
+  } catch {
+    return null;
+  }
 }
 
 function serializeProvider(provider) {

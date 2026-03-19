@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { parseVirtualKey } from '../lib/virtualKey.js';
 import { openaiEngine, anthropicEngine, googleEngine } from '../engines/index.js';
+import { getCapabilityModels } from '../lib/models.js';
 import { route, routeStream } from '../router.js';
 
 export function createServer({ config, db }) {
@@ -22,8 +23,7 @@ export function createServer({ config, db }) {
   // --- Model listing ---
 
   app.get('/v1/models', async (request) => {
-    const models = [...new Set(config.providers.flatMap((p) => p.models ?? []))]
-      .filter((m) => m !== '*' && !String(m).endsWith('/*'));
+    const models = getCapabilityModels(config);
 
     if (isAnthropicRequest(request.headers)) {
       const anthropicModels = [...new Set(models.map(stripAnthropicPrefix))];
@@ -47,8 +47,7 @@ export function createServer({ config, db }) {
   });
 
   app.get('/v1beta/models', async () => {
-    const models = [...new Set(config.providers.flatMap((p) => p.models ?? []))]
-      .filter((m) => m !== '*' && !String(m).endsWith('/*'));
+    const models = getCapabilityModels(config);
 
     return {
       models: models.map((id) => ({

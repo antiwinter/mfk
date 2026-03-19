@@ -6,7 +6,9 @@
 
 - Reads providers, models, and routing policy from a JSON config file keyed by upstream API key.
 - Routes by model, with optional explicit provider selection using the `provider` request field or `x-mfk-provider` header.
+- Exposes `/v1/models` and `/v1beta/models` from local config provider models instead of proxying upstream provider model lists.
 - Uses priority-based failover across keys and providers.
+- Can fall back to the nearest configured model tier when the requested model's provider is unavailable.
 - Applies cooldown policies for quota failures and other retryable failures.
 - Accepts local virtual keys in the format `sk-mfk-<username>` and writes request logs to SQLite.
 - Provides Commander-based CLI commands for `serve`, `test`, and `add`.
@@ -30,6 +32,11 @@ The default config file is `mfk.config.json`.
   "database": {
     "path": "./mfk.sqlite"
   },
+  "modelTier": [
+    ["opus-4-6"],
+    ["sonnet-4-6", "qwen3.5-plus"],
+    ["haiku-4-5"]
+  ],
   "providers": {
     "your-secret": {
       "url": "https://api.anthropic.com",
@@ -41,6 +48,8 @@ The default config file is `mfk.config.json`.
 ```
 
 Provider order is the routing priority. The first provider entry has the highest priority.
+
+`modelTier` is optional. Each array entry is a capability tier from stronger to weaker. When the exact requested model is unavailable because all matching providers are in cooldown, `mfk` can select the nearest available model from the configured tiers.
 
 Default values are omitted from the saved config:
 
@@ -108,5 +117,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 Notes:
 
 - `provider` is optional. If omitted, `mfk` picks the highest-priority provider that advertises the requested model.
+- If no active provider is available for the exact model, `mfk` can fall back to the nearest available `modelTier` entry.
+- `/v1/models` and `/v1beta/models` return only concrete provider models from the config file. `modelTier` is fallback metadata and is not exposed there.
 - Streaming is not implemented in this version.
 - Request attempts are recorded in SQLite at the configured database path.
