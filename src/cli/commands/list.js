@@ -6,7 +6,7 @@ export function registerListCommand(program) {
     .command('list')
     .description('List all virtual key alias mappings')
     .action(async (command) => {
-      const configPath = command.optsWithGlobals().config;
+      const configPath = program.opts().config;
       const { config, dir } = await loadConfig(configPath);
       const dbPath = resolveDatabasePath(dir, config.database.path);
       const db = createDatabase(dbPath);

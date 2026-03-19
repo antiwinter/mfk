@@ -9,7 +9,7 @@ export function registerAddCommand(program) {
     .action(async (...args) => {
       const [urlPort, apiKey] = args;
       const command = args.at(-1);
-      const configPath = command.optsWithGlobals().config;
+      const configPath = program.opts().config;
       const knownModel = command.opts().model?.trim() || null;
       const { config } = await loadConfig(configPath);
       const baseUrl = normalizeBaseUrl(urlPort);

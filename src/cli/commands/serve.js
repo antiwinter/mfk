@@ -9,7 +9,7 @@ export function registerServeCommand(program) {
     .option('--host <host>', 'Host to bind to')
     .option('--port <port>', 'Port to bind to', parseNumber)
     .action(async (options, command) => {
-      const configPath = command.optsWithGlobals().config;
+      const configPath = program.opts().config;
       const { config, dir } = await loadConfig(configPath);
       const dbPath = resolveDatabasePath(dir, config.database.path);
       const db = createDatabase(dbPath);

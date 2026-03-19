@@ -13,7 +13,7 @@ export function registerRmCommand(program) {
         throw new Error('Alias or virtual key must not be empty');
       }
 
-      const configPath = command.optsWithGlobals().config;
+      const configPath = program.opts().config;
       const { config, dir } = await loadConfig(configPath);
       const dbPath = resolveDatabasePath(dir, config.database.path);
       const db = createDatabase(dbPath);

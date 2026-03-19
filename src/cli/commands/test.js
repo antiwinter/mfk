@@ -8,8 +8,7 @@ export function registerTestCommand(program) {
     .action(async (...args) => {
       const providerRef = args[0];
       const model = args[1];
-      const command = args.at(-1);
-      const configPath = command.optsWithGlobals().config;
+      const configPath = program.opts().config;
       const { config } = await loadConfig(configPath);
       const provider = findProvider(config, providerRef);
 

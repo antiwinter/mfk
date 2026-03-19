@@ -15,7 +15,7 @@ export function registerGenCommand(program) {
         throw new Error('Alias must not be empty');
       }
 
-      const configPath = command.optsWithGlobals().config;
+      const configPath = program.opts().config;
       const { config, dir } = await loadConfig(configPath);
       const dbPath = resolveDatabasePath(dir, config.database.path);
       const db = createDatabase(dbPath);
