@@ -1,6 +1,8 @@
 import chalk from 'chalk';
 import { millify } from 'millify';
 
+const DUMP_SUFFIX_RESERVE = 20;
+
 export async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
   const rawText = await response.text();
@@ -79,14 +81,16 @@ export function emitDumpRequestLine(dump, payload) {
   resetDumpState(dump);
 
   const columns = dump.columns ?? process.stdout.columns ?? 160;
-  const promptWidth = Math.max(16, columns - 100);
-  const promptText = truncateOneLine(payload.promptText ?? extractPromptText(payload.request), promptWidth);
   const requestedModel = payload.requestedModel || '-';
   const selectedModel = payload.selectedModel || requestedModel;
   const maskedKey = maskUpstreamKey(payload.selectedKeyValue);
   const promptChars = formatCompactCount(payload.promptChars ?? extractPromptText(payload.request).length);
+  const promptPrefix = `-> ${requestedModel} (${maskedKey}/${selectedModel}) `;
+  const promptSuffix = ` [${promptChars}]`;
+  const promptWidth = Math.max(16, columns - promptPrefix.length - promptSuffix.length);
+  const promptText = truncateOneLine(payload.promptText ?? extractPromptText(payload.request), promptWidth);
 
-  dump.write(chalk.blue(`-> ${requestedModel} (${maskedKey}/${selectedModel}) ${promptText} [${promptChars}]\n`));
+  dump.write(chalk.blue(`${promptPrefix}${promptText}${promptSuffix}\n`));
   dump.write(chalk.gray('<< '));
   dump.headerWritten = true;
   dump.finished = false;
@@ -113,7 +117,10 @@ export function emitDumpResponse(dump, text) {
 
   const needsLeadingSpace = (dump.pendingWhitespace || hasLeadingWhitespace) && dump.responseWritten;
   const nextText = needsLeadingSpace ? ` ${normalizedText}` : normalizedText;
-  const responseWidth = Math.max(16, (dump.columns ?? process.stdout.columns ?? 160) - 100);
+  const responseWidth = Math.max(
+    16,
+    (dump.columns ?? process.stdout.columns ?? 160) - '<< '.length - DUMP_SUFFIX_RESERVE,
+  );
   const remainingWidth = responseWidth - dump.responseLength;
 
   if (remainingWidth <= 0) {
@@ -151,9 +158,12 @@ export function emitDumpError(dump, errorType, message) {
     dump.headerWritten = true;
   }
 
-  dump.write(chalk.red(errorType || 'error'));
+  const normalizedErrorType = errorType || 'error';
+  dump.write(chalk.red(normalizedErrorType));
   if (message) {
-    dump.write(` ${chalk.gray(truncateOneLine(message, Math.max(16, (dump.columns ?? process.stdout.columns ?? 160) - 100)))}`);
+    const columns = dump.columns ?? process.stdout.columns ?? 160;
+    const messageWidth = Math.max(16, columns - `<< ${normalizedErrorType} `.length);
+    dump.write(` ${chalk.gray(truncateOneLine(message, messageWidth))}`);
   }
   dump.responseWritten = true;
 }
@@ -222,7 +232,7 @@ function formatTokenSuffix(inputTokens, outputTokens) {
     return '';
   }
 
-  return chalk.gray(`[${formatCompactCount(inputTokens ?? 0)} ↑, ${formatCompactCount(outputTokens ?? 0)} ↓]`);
+  return chalk.gray(`[${formatCompactCount(inputTokens ?? 0)}↑, ${formatCompactCount(outputTokens ?? 0)}↓]`);
 }
 
 function maskUpstreamKey(value) {

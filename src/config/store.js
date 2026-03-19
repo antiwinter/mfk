@@ -50,7 +50,7 @@ function normalizeModelTier(rawModelTier) {
 
 function normalizeProviders(rawProviders) {
   if (Array.isArray(rawProviders)) {
-    return rawProviders.flatMap((provider, providerIndex) => normalizeLegacyProvider(provider, providerIndex));
+    return rawProviders.flatMap((provider, providerIndex) => normalizeArrayProvider(provider, providerIndex));
   }
 
   if (!rawProviders || typeof rawProviders !== 'object') {
@@ -60,6 +60,26 @@ function normalizeProviders(rawProviders) {
   return Object.entries(rawProviders).map(([apiKey, provider], providerIndex) =>
     normalizeProviderEntry(apiKey, provider, providerIndex),
   );
+}
+
+function normalizeArrayProvider(provider, providerIndex) {
+  if (provider?.apiKey && provider?.key?.value) {
+    return [normalizeRuntimeProvider(provider, providerIndex)];
+  }
+
+  return normalizeLegacyProvider(provider, providerIndex);
+}
+
+function normalizeRuntimeProvider(provider, providerIndex) {
+  return buildRuntimeProvider({
+    apiKey: provider.apiKey,
+    baseUrl: stripTrailingSlash(provider.baseUrl ?? provider.url ?? ''),
+    type: normalizeProviderType(provider.type),
+    quotaReset: provider.quotaReset,
+    failureReset: provider.failureReset,
+    models: provider.models,
+    order: provider.order ?? providerIndex,
+  });
 }
 
 function normalizeLegacyProvider(provider, providerIndex) {

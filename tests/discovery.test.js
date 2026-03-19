@@ -54,7 +54,7 @@ test('probeProviderModel prints request line first and streams response on the s
   }
 
   const rendered = String(output.join('')).replace(/\x1B\[[0-9;]*m/g, '');
-  assert.equal(rendered, '-> qwen3.5-plus (sk-sp-b...2952/qwen3.5-plus) hello, tell me yo... [30]\n<< pong [12 ↑, 4 ↓]\n');
+  assert.equal(rendered, '-> qwen3.5-plus (sk-sp-b...2952/qwen3.5-plus) hello, tell me your model name [30]\n<< pong [12↑, 4↓]\n');
 });
 
 test('probeProviderModel replaces streamed newlines with spaces instead of joining words', async () => {
@@ -92,5 +92,5 @@ test('probeProviderModel replaces streamed newlines with spaces instead of joini
   }
 
   const rendered = String(output.join('')).replace(/\x1B\[[0-9;]*m/g, '');
-  assert.equal(rendered, '-> qwen3.5-plus (sk-sp-b...2952/qwen3.5-plus) hello, tell me your model name [30]\n<< I am Gemini, a large language model trained by Google. [12 ↑, 4 ↓]\n');
+  assert.equal(rendered, '-> qwen3.5-plus (sk-sp-b...2952/qwen3.5-plus) hello, tell me your model name [30]\n<< I am Gemini, a large language model trained by Google. [12↑, 4↓]\n');
 });
