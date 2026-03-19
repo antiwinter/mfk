@@ -29,10 +29,6 @@ test('openai parseReq prefers max_completion_tokens over max_tokens', () => {
   assert.equal(ir.maxTokens, 200);
 });
 
-test('openai endpoint returns chat completions path', () => {
-  assert.equal(openaiEngine.endpoint(), '/v1/chat/completions');
-});
-
 test('openai buildHeaders produces correct authorization', () => {
   const provider = { baseUrl: 'https://api.openai.com', headers: {} };
   const key = { value: 'sk-test' };

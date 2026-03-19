@@ -1,21 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../src/server/app.js';
-import { loadConfig, resolveDatabasePath } from '../src/config/store.js';
+import { loadConfig } from '../src/config/store.js';
 import { createDatabase } from '../src/db/client.js';
+import { selectCandidates } from '../src/router.js';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 
 // Uses the real mfk.config.json — no synthetic config or env vars.
+const { config: INTEGRATION_CONFIG } = await loadConfig();
+const FILTERS = parseIntegrationFilters(process.env);
+
 let _server;
 async function getServer() {
   if (_server) return _server;
-  const { config, dir } = await loadConfig();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mfk-integ-'));
   const db = createDatabase(path.join(tmpDir, 'test.sqlite'));
   db.createVirtualKey('integration-test', VKEY);
-  const app = createServer({ config, db });
+  const app = createServer({ config: INTEGRATION_CONFIG, db });
   const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
   _server = { app, db, baseUrl };
   return _server;
@@ -155,18 +158,127 @@ const INBOUNDS = [
   { name: 'google',    req: googleReq,    assert: assertGoogle },
 ];
 
+const CASES = buildIntegrationCases();
+
+if (CASES.length === 0) {
+  throw new Error(`No integration cases matched filters: ${describeFilters(FILTERS)}`);
+}
+
 // Model as outer loop: test all inbound protocols for each model before moving
 // on, so that failover-induced key disables don't affect later models.
-for (const model of MODELS) {
-  for (const inbound of INBOUNDS) {
-    for (const stream of [false, true]) {
-      const label = `${inbound.name} → ${model} ${stream ? 'stream' : 'non-stream'}`;
-      test(`integration: ${label}`, { timeout: 60_000 }, async () => {
-        const { baseUrl } = await getServer();
-        const [url, opts] = inbound.req(baseUrl, model, stream);
-        const res = await fetch(url, opts);
-        await inbound.assert(res, stream);
-      });
+for (const testCase of CASES) {
+  const label = `${testCase.inbound.name} → ${testCase.outbound.label} → ${testCase.model} ${testCase.stream ? 'stream' : 'non-stream'}`;
+  test(`integration: ${label}`, { timeout: 60_000 }, async () => {
+    const { baseUrl } = await getServer();
+    const [url, opts] = testCase.inbound.req(baseUrl, testCase.model, testCase.stream);
+    const res = await fetch(url, opts);
+    await testCase.inbound.assert(res, testCase.stream);
+  });
+}
+
+function buildIntegrationCases() {
+  const cases = [];
+
+  for (const model of MODELS) {
+    const outbound = resolveOutbound(model);
+    if (!matchesFilter(FILTERS.model, model)) {
+      continue;
+    }
+
+    if (!matchesOutboundFilter(FILTERS.outbound, outbound)) {
+      continue;
+    }
+
+    for (const inbound of INBOUNDS) {
+      if (!matchesFilter(FILTERS.inbound, inbound.name)) {
+        continue;
+      }
+
+      for (const stream of [false, true]) {
+        const mode = stream ? 'stream' : 'non-stream';
+        if (!matchesModeFilter(FILTERS.mode, mode)) {
+          continue;
+        }
+
+        cases.push({ model, inbound, outbound, stream });
+      }
     }
   }
+
+  return cases;
+}
+
+function resolveOutbound(model) {
+  const [candidate] = selectCandidates(INTEGRATION_CONFIG, { getKeyState: () => null }, { model });
+  if (!candidate) {
+    return {
+      provider: null,
+      ref: 'none',
+      label: 'none',
+    };
+  }
+
+  return {
+    provider: candidate.provider,
+    ref: String(candidate.provider.order + 1),
+    label: `${candidate.provider.order + 1}:${candidate.provider.type}`,
+  };
+}
+
+function parseIntegrationFilters(env) {
+  const filters = {
+    inbound: normalizeFilterValue(env.MFK_TEST_INBOUND),
+    outbound: normalizeFilterValue(env.MFK_TEST_OUTBOUND),
+    model: normalizeFilterValue(env.MFK_TEST_MODEL),
+    mode: normalizeFilterValue(env.MFK_TEST_MODE),
+  };
+
+  return filters;
+}
+
+function normalizeFilterValue(value) {
+  return String(value ?? '').trim().toLowerCase() || null;
+}
+
+function matchesFilter(filterValue, actualValue) {
+  if (!filterValue) {
+    return true;
+  }
+
+  return String(actualValue).toLowerCase() === filterValue;
+}
+
+function matchesModeFilter(filterValue, mode) {
+  if (!filterValue) {
+    return true;
+  }
+
+  if (filterValue === 'nonstream') {
+    return mode === 'non-stream';
+  }
+
+  return mode === filterValue;
+}
+
+function matchesOutboundFilter(filterValue, outbound) {
+  if (!filterValue) {
+    return true;
+  }
+
+  return [
+    outbound.ref,
+    outbound.label,
+    outbound.provider?.id,
+    outbound.provider?.type,
+    outbound.provider?.baseUrl,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase() === filterValue);
+}
+
+function describeFilters(filters) {
+  return Object.entries(filters)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(', ') || '(none)';
 }

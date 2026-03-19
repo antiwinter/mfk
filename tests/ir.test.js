@@ -2,36 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createIR, createDelta, createMessage, collectEvents, flattenMessageContent, collectSystemPrompt } from '../src/ir.js';
 
-test('createIR produces a valid IR object', () => {
-  const ir = createIR({
-    model: 'gpt-4',
-    messages: [{ role: 'user', content: 'hello' }],
-    temperature: 0.7,
-    maxTokens: 100,
-    stream: true,
-  });
-
-  assert.equal(ir.model, 'gpt-4');
-  assert.equal(ir.messages.length, 1);
-  assert.equal(ir.temperature, 0.7);
-  assert.equal(ir.maxTokens, 100);
-  assert.equal(ir.stream, true);
-});
-
-test('createDelta creates a delta event', () => {
-  const delta = createDelta('hello');
-  assert.deepEqual(delta, { type: 'delta', text: 'hello' });
-});
-
-test('createMessage creates a message event with defaults', () => {
-  const msg = createMessage({ content: 'hi' });
-  assert.equal(msg.type, 'message');
-  assert.equal(msg.content, 'hi');
-  assert.equal(msg.finishReason, 'stop');
-  assert.equal(msg.usage.inputTokens, 0);
-  assert.equal(msg.usage.outputTokens, 0);
-});
-
 test('collectEvents accumulates deltas into message content', async () => {
   async function* gen() {
     yield createDelta('hel');

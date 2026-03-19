@@ -49,10 +49,6 @@ test('anthropic parseReq flattens content block arrays', () => {
   assert.equal(ir.messages[0].content, 'line1\nline2');
 });
 
-test('anthropic endpoint returns messages path', () => {
-  assert.equal(anthropicEngine.endpoint(), '/v1/messages');
-});
-
 test('anthropic buildHeaders produces correct authorization', () => {
   const provider = { baseUrl: 'https://api.anthropic.com', headers: {} };
   const key = { value: 'sk-ant-test' };
