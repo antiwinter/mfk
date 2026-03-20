@@ -40,85 +40,68 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
     throw error;
   }
 
-  let lastError = null;
-  let lastFailure = null;
+  const candidate = candidates[0];
+  const startedAt = Date.now();
 
-  for (const candidate of candidates) {
-    const startedAt = Date.now();
-    try {
-      const outboundEngine = getEngine(candidate.provider.type);
-      const routedIr = candidate.model === ir.model ? ir : { ...ir, model: candidate.model };
-      const promptText = extractPromptText(routedIr);
-      emitDumpRequestLine(dump, {
-        requestedModel: ir.model,
-        selectedModel: candidate.model,
-        selectedKeyValue: candidate.key.value,
-        request: routedIr,
-        promptText,
-        promptChars: promptText.length,
-      });
-      const { url, headers } = buildFetch(outboundEngine, routedIr, candidate.provider, candidate.key);
-      const body = outboundEngine.buildReq(routedIr);
-      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  try {
+    const outboundEngine = getEngine(candidate.provider.type);
+    const routedIr = candidate.model === ir.model ? ir : { ...ir, model: candidate.model };
+    const promptText = extractPromptText(routedIr);
+    emitDumpRequestLine(dump, {
+      requestedModel: ir.model,
+      selectedModel: candidate.model,
+      selectedKeyValue: candidate.key.value,
+      request: routedIr,
+      promptText,
+      promptChars: promptText.length,
+    });
+    const { url, headers } = buildFetch(outboundEngine, routedIr, candidate.provider, candidate.key);
+    const body = outboundEngine.buildReq(routedIr);
+    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
 
-      const irEvents = tapDumpEvents(outboundEngine.parse(response, url), dump);
-      const message = await collectEvents(irEvents);
-      const usage = message.usage ?? null;
-      const result = inboundEngine.buildRes(message);
-      finalizeDump(dump, usage);
+    const irEvents = tapDumpEvents(outboundEngine.parse(response, url), dump);
+    const message = await collectEvents(irEvents);
+    const usage = message.usage ?? null;
+    const result = inboundEngine.buildRes(message);
+    finalizeDump(dump, usage);
 
-      db.markSuccess(candidate.key.name);
-      writeRequestLog(db, {
-        requestedAt,
-        alias,
-        requestModel: ir.model,
-        selectedKey: candidate.key.name,
-        status: 'success',
-        latencyMs: Date.now() - startedAt,
-        inputTokens: usage?.inputTokens,
-        outputTokens: usage?.outputTokens,
-      }, onRequestLog);
-      return result;
-    } catch (error) {
-      lastError = error;
-      const errorType = error.errorType ?? 'fatal';
-      lastFailure = {
-        selectedModel: candidate.model,
-        selectedKeyValue: candidate.key.value,
-        errorType,
-        errorMessage: error.message,
-      };
-      emitDumpError(dump, errorType, error.message);
-      finalizeDump(dump);
-      const disabledUntil = shouldDisable(errorType)
-        ? computeNextBoundary(errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset)
-        : null;
+    db.markSuccess(candidate.key.name);
+    writeRequestLog(db, {
+      requestedAt,
+      alias,
+      requestModel: ir.model,
+      selectedKey: candidate.key.name,
+      status: 'success',
+      latencyMs: Date.now() - startedAt,
+      inputTokens: usage?.inputTokens,
+      outputTokens: usage?.outputTokens,
+    }, onRequestLog);
+    return result;
+  } catch (error) {
+    const errorType = error.errorType ?? 'fatal';
+    emitDumpError(dump, errorType, error.message);
+    finalizeDump(dump);
+    const disabledUntil = computeNextBoundary(
+      errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
+    );
 
-      db.markFailure(candidate.key.name, {
-        disabledUntil,
-        reason: errorType,
-        message: error.message,
-      });
-      writeRequestLog(db, {
-        requestedAt,
-        alias,
-        requestModel: ir.model,
-        selectedKey: candidate.key.name,
-        status: 'upstream_error',
-        errorType,
-        errorMessage: error.message,
-        latencyMs: Date.now() - startedAt,
-      }, onRequestLog);
-
-      if (!error.retryable) {
-        continue;
-      }
-    }
+    db.markFailure(candidate.key.name, {
+      disabledUntil,
+      reason: errorType,
+      message: error.message,
+    });
+    writeRequestLog(db, {
+      requestedAt,
+      alias,
+      requestModel: ir.model,
+      selectedKey: candidate.key.name,
+      status: 'upstream_error',
+      errorType,
+      errorMessage: error.message,
+      latencyMs: Date.now() - startedAt,
+    }, onRequestLog);
+    throw error;
   }
-
-  const error = new Error(lastError?.message ?? 'All candidate providers failed');
-  error.statusCode = lastError?.statusCode ?? 503;
-  throw error;
 }
 
 export async function routeStream({ config, db, ir, reply, inboundEngine, alias, dump, onRequestLog }) {
@@ -147,95 +130,75 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
     throw error;
   }
 
-  let lastError = null;
-  let lastFailure = null;
+  const candidate = candidates[0];
+  const startedAt = Date.now();
 
-  for (const candidate of candidates) {
-    const startedAt = Date.now();
-    let emittedData = false;
+  try {
+    const outboundEngine = getEngine(candidate.provider.type);
+    const streamIr = candidate.model === ir.model
+      ? { ...ir, stream: true }
+      : { ...ir, model: candidate.model, stream: true };
+    const promptText = extractPromptText(streamIr);
+    emitDumpRequestLine(dump, {
+      requestedModel: ir.model,
+      selectedModel: candidate.model,
+      selectedKeyValue: candidate.key.value,
+      request: streamIr,
+      promptText,
+      promptChars: promptText.length,
+    });
+    const { url, headers } = buildFetch(outboundEngine, streamIr, candidate.provider, candidate.key);
+    const body = outboundEngine.buildReq(streamIr);
+    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
 
-    try {
-      const outboundEngine = getEngine(candidate.provider.type);
-      const streamIr = candidate.model === ir.model
-        ? { ...ir, stream: true }
-        : { ...ir, model: candidate.model, stream: true };
-      const promptText = extractPromptText(streamIr);
-      emitDumpRequestLine(dump, {
-        requestedModel: ir.model,
-        selectedModel: candidate.model,
-        selectedKeyValue: candidate.key.value,
-        request: streamIr,
-        promptText,
-        promptChars: promptText.length,
-      });
-      const { url, headers } = buildFetch(outboundEngine, streamIr, candidate.provider, candidate.key);
-      const body = outboundEngine.buildReq(streamIr);
-      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    let finalMessage = null;
+    const irEvents = tapDumpEvents(
+      captureFinalMessage(outboundEngine.parse(response, url), (message) => {
+        finalMessage = message;
+      }),
+      dump,
+    );
+    await inboundEngine.writeStream(reply, irEvents, ir);
+    const usage = finalMessage?.usage ?? null;
+    finalizeDump(dump, usage);
 
-      let finalMessage = null;
-      const irEvents = tapDumpEvents(
-        captureFinalMessage(outboundEngine.parse(response, url), (message) => {
-          finalMessage = message;
-        }),
-        dump,
-      );
-      await inboundEngine.writeStream(reply, irEvents, ir);
-      const usage = finalMessage?.usage ?? null;
-      emittedData = true;
-      finalizeDump(dump, usage);
+    db.markSuccess(candidate.key.name);
+    writeRequestLog(db, {
+      requestedAt,
+      alias,
+      requestModel: ir.model,
+      selectedKey: candidate.key.name,
+      status: 'success',
+      latencyMs: Date.now() - startedAt,
+      inputTokens: usage?.inputTokens,
+      outputTokens: usage?.outputTokens,
+    }, onRequestLog);
+    return;
+  } catch (error) {
+    const errorType = error.errorType ?? 'fatal';
+    emitDumpError(dump, errorType, error.message);
+    finalizeDump(dump);
+    const disabledUntil = computeNextBoundary(
+      errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
+    );
 
-      db.markSuccess(candidate.key.name);
-      writeRequestLog(db, {
-        requestedAt,
-        alias,
-        requestModel: ir.model,
-        selectedKey: candidate.key.name,
-        status: 'success',
-        latencyMs: Date.now() - startedAt,
-        inputTokens: usage?.inputTokens,
-        outputTokens: usage?.outputTokens,
-      }, onRequestLog);
-      return;
-    } catch (error) {
-      lastError = error;
-      const errorType = error.errorType ?? 'fatal';
-      lastFailure = {
-        selectedModel: candidate.model,
-        selectedKeyValue: candidate.key.value,
-        errorType,
-        errorMessage: error.message,
-      };
-      emitDumpError(dump, errorType, error.message);
-      finalizeDump(dump);
-      const disabledUntil = shouldDisable(errorType)
-        ? computeNextBoundary(errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset)
-        : null;
-
-      db.markFailure(candidate.key.name, {
-        disabledUntil,
-        reason: errorType,
-        message: error.message,
-      });
-      writeRequestLog(db, {
-        requestedAt,
-        alias,
-        requestModel: ir.model,
-        selectedKey: candidate.key.name,
-        status: 'upstream_error',
-        errorType,
-        errorMessage: error.message,
-        latencyMs: Date.now() - startedAt,
-      }, onRequestLog);
-
-      if (emittedData || !error.retryable) {
-        break;
-      }
-    }
+    db.markFailure(candidate.key.name, {
+      disabledUntil,
+      reason: errorType,
+      message: error.message,
+    });
+    writeRequestLog(db, {
+      requestedAt,
+      alias,
+      requestModel: ir.model,
+      selectedKey: candidate.key.name,
+      status: 'upstream_error',
+      errorType,
+      errorMessage: error.message,
+      latencyMs: Date.now() - startedAt,
+    }, onRequestLog);
+    throw error;
   }
-
-  const error = new Error(lastError?.message ?? 'All candidate providers failed');
-  error.statusCode = lastError?.statusCode ?? 503;
-  throw error;
 }
 
 // Also export a simple invoke helper for discovery probing (non-stream, returns IR message)
@@ -358,10 +321,6 @@ function compareCandidates(left, right) {
   }
 
   return left.key.priority - right.key.priority;
-}
-
-function shouldDisable(errorType) {
-  return errorType === 'quota' || errorType === 'retryable' || errorType === 'auth';
 }
 
 function matchesProviderSelector(provider, selector) {
