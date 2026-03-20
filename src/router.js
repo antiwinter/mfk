@@ -5,21 +5,21 @@ import { buildProviderUrl, emitDumpError, emitDumpRequestLine, emitDumpResponse,
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
 import { normalizeModelId, resolveNearestProviderModel, resolveProviderModel } from './lib/models.js';
 
-export async function route({ config, db, ir, inboundEngine, alias, dump, onRequestLog }) {
+export async function route({ config, db, ir, inboundEngine, virtualKey, dump, onRequestLog }) {
   const candidates = selectCandidates(config, db, ir);
   const requestedAt = new Date().toISOString();
   debugLog('route', {
     model: ir.model,
     normalizedModel: normalizeModelId(ir.model),
     provider: ir.provider ?? null,
-    alias,
+    virtualKey,
     candidateCount: candidates.length,
   });
 
   if (candidates.length === 0) {
     writeRequestLog(db, {
       requestedAt,
-      alias,
+      virtualKey,
       requestModel: ir.model,
       status: 'no_candidate',
       errorType: 'routing',
@@ -68,7 +68,7 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
     db.markSuccess(candidate.key.name);
     writeRequestLog(db, {
       requestedAt,
-      alias,
+      virtualKey,
       requestModel: ir.model,
       selectedKey: candidate.key.name,
       status: 'success',
@@ -92,7 +92,7 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
     });
     writeRequestLog(db, {
       requestedAt,
-      alias,
+      virtualKey,
       requestModel: ir.model,
       selectedKey: candidate.key.name,
       status: 'upstream_error',
@@ -104,14 +104,14 @@ export async function route({ config, db, ir, inboundEngine, alias, dump, onRequ
   }
 }
 
-export async function routeStream({ config, db, ir, reply, inboundEngine, alias, dump, onRequestLog }) {
+export async function routeStream({ config, db, ir, reply, inboundEngine, virtualKey, dump, onRequestLog }) {
   const candidates = selectCandidates(config, db, ir);
   const requestedAt = new Date().toISOString();
   debugLog('route_stream', {
     model: ir.model,
     normalizedModel: normalizeModelId(ir.model),
     provider: ir.provider ?? null,
-    alias,
+    virtualKey,
     candidateCount: candidates.length,
   });
 
@@ -165,7 +165,7 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
     db.markSuccess(candidate.key.name);
     writeRequestLog(db, {
       requestedAt,
-      alias,
+      virtualKey,
       requestModel: ir.model,
       selectedKey: candidate.key.name,
       status: 'success',
@@ -189,7 +189,7 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, alias,
     });
     writeRequestLog(db, {
       requestedAt,
-      alias,
+      virtualKey,
       requestModel: ir.model,
       selectedKey: candidate.key.name,
       status: 'upstream_error',

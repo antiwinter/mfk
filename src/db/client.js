@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 export function normalizeRequestLogRecord(record) {
   return {
     requested_at: record.requestedAt ?? new Date().toISOString(),
-    alias: record.alias,
+    virtual_key: record.virtualKey,
     request_model: record.requestModel,
     selected_key: record.selectedKey ?? null,
     status: record.status,
@@ -50,7 +50,7 @@ export function createDatabase(dbPath) {
     insertRequestLog: db.prepare(`
       INSERT INTO request_log (
         requested_at,
-        alias,
+        virtual_key,
         request_model,
         selected_key,
         status,
@@ -95,6 +95,11 @@ export function createDatabase(dbPath) {
     deleteVirtualKeyByToken: db.prepare(`
       DELETE FROM virtual_keys
       WHERE virtual_key = ?
+    `),
+    updateVirtualKeyAlias: db.prepare(`
+      UPDATE virtual_keys
+      SET alias = ?
+      WHERE alias = ?
     `),
   };
 
@@ -141,7 +146,7 @@ export function createDatabase(dbPath) {
       const row = normalizeRequestLogRecord(record);
       statements.insertRequestLog.run(
         row.requested_at,
-        row.alias,
+        row.virtual_key,
         row.request_model,
         row.selected_key,
         row.status,
@@ -188,6 +193,19 @@ export function createDatabase(dbPath) {
       statements.deleteVirtualKeyByToken.run(virtualKey);
       return existing;
     },
+    renameVirtualKeyAlias(currentAlias, nextAlias) {
+      const existing = statements.getVirtualKeyByAlias.get(currentAlias) ?? null;
+      if (!existing) {
+        return null;
+      }
+
+      if (currentAlias === nextAlias) {
+        return existing;
+      }
+
+      statements.updateVirtualKeyAlias.run(nextAlias, currentAlias);
+      return statements.getVirtualKeyByAlias.get(nextAlias) ?? null;
+    },
     close() {
       db.close();
     },
@@ -216,7 +234,7 @@ function initialize(db) {
     CREATE TABLE IF NOT EXISTS request_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       requested_at TEXT NOT NULL,
-      alias TEXT NOT NULL,
+      virtual_key TEXT NOT NULL,
       request_model TEXT NOT NULL,
       selected_key TEXT,
       status TEXT NOT NULL,

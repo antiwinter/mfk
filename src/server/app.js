@@ -157,7 +157,7 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
           ir,
           reply,
           inboundEngine,
-          alias: virtualKey.alias,
+          virtualKey: virtualKey.virtual_key,
           dump,
           onRequestLog: runtime.onRequestLog,
         });
@@ -174,7 +174,7 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
       db,
       ir,
       inboundEngine,
-      alias: virtualKey.alias,
+      virtualKey: virtualKey.virtual_key,
       dump,
       onRequestLog: runtime.onRequestLog,
     });

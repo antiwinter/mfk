@@ -86,13 +86,45 @@ test('virtual keys can be deleted by alias or token', () => {
   }
 });
 
-test('request logs store alias, selected key, and token counts', () => {
+test('virtual key aliases can be renamed', () => {
+  const db = createTempDb();
+
+  try {
+    db.createVirtualKey('alice', 'mfk-0123456789abcdef01234567');
+
+    const renamed = db.renameVirtualKeyAlias('alice', 'bob');
+
+    assert.equal(renamed?.alias, 'bob');
+    assert.equal(renamed?.virtual_key, 'mfk-0123456789abcdef01234567');
+    assert.equal(db.findVirtualKeyByAlias('alice'), null);
+    assert.equal(db.findVirtualKeyByAlias('bob')?.virtual_key, 'mfk-0123456789abcdef01234567');
+  } finally {
+    db.close();
+  }
+});
+
+test('renaming a virtual key alias to the same value is a no-op', () => {
+  const db = createTempDb();
+
+  try {
+    db.createVirtualKey('alice', 'mfk-0123456789abcdef01234567');
+
+    const renamed = db.renameVirtualKeyAlias('alice', 'alice');
+
+    assert.equal(renamed?.alias, 'alice');
+    assert.equal(renamed?.virtual_key, 'mfk-0123456789abcdef01234567');
+  } finally {
+    db.close();
+  }
+});
+
+test('request logs store virtual key, selected key, and token counts', () => {
   const db = createTempDb();
 
   try {
     db.logRequest({
       requestedAt: '2026-03-19T00:00:00.000Z',
-      alias: 'alice',
+      virtualKey: 'mfk-0123456789abcdef01234567',
       requestModel: 'anthropic/claude-sonnet-4-6',
       selectedKey: 'anthropic-key',
       status: 'success',
@@ -102,7 +134,7 @@ test('request logs store alias, selected key, and token counts', () => {
     });
 
     const [record] = db.listRequestLogs();
-    assert.equal(record.alias, 'alice');
+  assert.equal(record.virtual_key, 'mfk-0123456789abcdef01234567');
     assert.equal(record.request_model, 'anthropic/claude-sonnet-4-6');
     assert.equal(record.selected_key, 'anthropic-key');
     assert.equal(record.status, 'success');

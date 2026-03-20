@@ -162,7 +162,7 @@ test('server dump emits one formatted line and request logging still records DB-
   const output = stripAnsi(dumpOutput.join(''));
   assert.equal(output, '-> qwen3.5-plus (sk-upst...ream/qwen3.5-plus) hello [5]\n<< pong [12↑, 4↓]\n');
   assert.equal(requestLogs.length, 1);
-  assert.equal(requestLogs[0].alias, 'alice');
+  assert.equal(requestLogs[0].virtual_key, 'mfk-0123456789abcdef01234567');
   assert.equal(requestLogs[0].request_model, 'qwen3.5-plus');
   assert.equal(requestLogs[0].selected_key, 'openai-provider');
   assert.equal(requestLogs[0].status, 'success');
