@@ -1,4 +1,4 @@
-import { createIR, createDelta, createMessage, flattenMessageContent } from '../ir.js';
+import { createIR, createDelta, createMessage, flattenMessageContent, normalizeMessageContent } from '../ir.js';
 import { buildProviderUrl, requestJson, readJsonError, uniqueModels } from '../lib/http.js';
 
 export const openaiEngine = {
@@ -30,7 +30,12 @@ export const openaiEngine = {
   buildReq(ir) {
     const payload = {
       model: ir.model,
-      messages: ir.messages,
+      messages: ir.messages.map((message) => ({
+        ...message,
+        content: Array.isArray(message.content)
+          ? messageContentToOpenAiContent(message.content)
+          : message.content,
+      })),
       temperature: ir.temperature,
       max_tokens: ir.maxTokens,
       stream: ir.stream,
@@ -241,4 +246,38 @@ function* processOpenAiSseEvent(event, setModel, setFinish, setUsage) {
       yield createDelta(delta);
     }
   }
+}
+
+function messageContentToOpenAiContent(content) {
+  const normalized = normalizeMessageContent(content);
+
+  if (!Array.isArray(normalized)) {
+    return '';
+  }
+
+  return normalized
+    .map((part) => {
+      if (part?.type === 'text') {
+        return { type: 'text', text: part.text ?? '' };
+      }
+
+      if (part?.type === 'image' && part?.data) {
+        return {
+          type: 'image_url',
+          image_url: {
+            url: `data:${part.mediaType ?? 'image/png'};base64,${part.data}`,
+          },
+        };
+      }
+
+      if (part?.type === 'image_url' && part?.url) {
+        return {
+          type: 'image_url',
+          image_url: { url: part.url },
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
 }

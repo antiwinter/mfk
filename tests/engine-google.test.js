@@ -45,6 +45,47 @@ test('google buildReq produces correct body', () => {
   assert.deepEqual(body.contents[0].parts, [{ text: 'hi' }]);
 });
 
+test('google buildReq preserves multimodal parts', () => {
+  const ir = {
+    model: 'gemini-pro',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { text: 'Describe this image.' },
+          { inlineData: { mimeType: 'image/png', data: 'abc123' } },
+        ],
+      },
+    ],
+    stream: false,
+  };
+
+  const body = googleEngine.buildReq(ir);
+  assert.deepEqual(body.contents[0].parts, [
+    { text: 'Describe this image.' },
+    { inlineData: { mimeType: 'image/png', data: 'abc123' } },
+  ]);
+});
+
+test('google parseReq preserves multimodal parts', () => {
+  const ir = googleEngine.parseReq({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: 'Describe this image.' },
+          { inlineData: { mimeType: 'image/png', data: 'abc123' } },
+        ],
+      },
+    ],
+  }, { model: 'gemini-pro', stream: false });
+
+  assert.deepEqual(ir.messages[0].content, [
+    { type: 'text', text: 'Describe this image.' },
+    { type: 'image', mediaType: 'image/png', data: 'abc123' },
+  ]);
+});
+
 test('google endpoint uses streamGenerateContent for streaming', () => {
   const ir = { model: 'gemini-pro', stream: true };
   const key = { value: 'test-key' };

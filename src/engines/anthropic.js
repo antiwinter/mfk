@@ -1,4 +1,11 @@
-import { createIR, createDelta, createMessage, flattenMessageContent, collectSystemPrompt } from '../ir.js';
+import {
+  createIR,
+  createDelta,
+  createMessage,
+  flattenMessageContent,
+  collectSystemPrompt,
+  normalizeMessageContent,
+} from '../ir.js';
 import { buildProviderUrl, readJsonError, requestJson, uniqueModels } from '../lib/http.js';
 
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -11,9 +18,7 @@ export const anthropicEngine = {
     const rawMessages = Array.isArray(body.messages)
       ? body.messages.map((msg) => ({
           role: msg.role,
-          content: Array.isArray(msg.content)
-            ? msg.content.filter((p) => p?.type === 'text').map((p) => p.text ?? '').join('\n')
-            : msg.content,
+          content: msg.content,
         }))
       : [];
 
@@ -51,7 +56,9 @@ export const anthropicEngine = {
       .filter((msg) => msg.role !== 'system')
       .map((msg) => ({
         role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: flattenMessageContent(msg.content),
+        content: Array.isArray(msg.content)
+          ? messageContentToAnthropicBlocks(msg.content)
+          : flattenMessageContent(msg.content),
       }));
 
     return {
@@ -284,4 +291,33 @@ function extractAnthropicResponseText(data) {
   return Array.isArray(data?.content)
     ? data.content.filter((p) => p?.type === 'text').map((p) => p.text ?? '').join('\n')
     : '';
+}
+
+function messageContentToAnthropicBlocks(content) {
+  const normalized = normalizeMessageContent(content);
+
+  if (!Array.isArray(normalized)) {
+    return '';
+  }
+
+  return normalized
+    .map((part) => {
+      if (part?.type === 'text') {
+        return { type: 'text', text: part.text ?? '' };
+      }
+
+      if (part?.type === 'image' && part?.data) {
+        return {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: part.mediaType ?? 'image/png',
+            data: part.data,
+          },
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
 }

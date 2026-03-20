@@ -1,4 +1,11 @@
-import { createIR, createDelta, createMessage, flattenMessageContent, collectSystemPrompt } from '../ir.js';
+import {
+  createIR,
+  createDelta,
+  createMessage,
+  flattenMessageContent,
+  collectSystemPrompt,
+  normalizeMessageContent,
+} from '../ir.js';
 import { buildProviderUrl, readJsonError, requestJson, uniqueModels } from '../lib/http.js';
 
 export const googleEngine = {
@@ -19,10 +26,10 @@ export const googleEngine = {
     if (Array.isArray(body.contents)) {
       for (const entry of body.contents) {
         const role = entry.role === 'model' ? 'assistant' : 'user';
-        const text = Array.isArray(entry.parts)
-          ? entry.parts.map((p) => p.text ?? '').join('\n')
+        const content = Array.isArray(entry.parts)
+          ? entry.parts
           : '';
-        messages.push({ role, content: text });
+        messages.push({ role, content });
       }
     }
 
@@ -57,7 +64,9 @@ export const googleEngine = {
       .filter((msg) => msg.role !== 'system')
       .map((msg) => ({
         role: msg.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: flattenMessageContent(msg.content) }],
+        parts: Array.isArray(msg.content)
+          ? messageContentToGoogleParts(msg.content)
+          : [{ text: flattenMessageContent(msg.content) }],
       }));
 
     return {
@@ -238,4 +247,31 @@ function* processGoogleSseEvent(event, setModel, setFinishReason, setUsage) {
       yield createDelta(text);
     }
   }
+}
+
+function messageContentToGoogleParts(content) {
+  const normalized = normalizeMessageContent(content);
+
+  if (!Array.isArray(normalized)) {
+    return [];
+  }
+
+  return normalized
+    .map((part) => {
+      if (part?.type === 'text') {
+        return { text: part.text ?? '' };
+      }
+
+      if (part?.type === 'image' && part?.data) {
+        return {
+          inlineData: {
+            mimeType: part.mediaType ?? 'image/png',
+            data: part.data,
+          },
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
 }

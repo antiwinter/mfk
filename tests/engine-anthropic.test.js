@@ -31,7 +31,7 @@ test('anthropic parseReq strips anthropic/ prefix from model', () => {
   assert.equal(ir.model, 'claude-sonnet-4-6');
 });
 
-test('anthropic parseReq flattens content block arrays', () => {
+test('anthropic parseReq preserves text content block arrays', () => {
   const ir = anthropicEngine.parseReq({
     model: 'test',
     messages: [
@@ -46,7 +46,34 @@ test('anthropic parseReq flattens content block arrays', () => {
     max_tokens: 100,
   });
 
-  assert.equal(ir.messages[0].content, 'line1\nline2');
+  assert.deepEqual(ir.messages[0].content, [
+    { type: 'text', text: 'line1' },
+    { type: 'text', text: 'line2' },
+  ]);
+});
+
+test('anthropic parseReq preserves image content blocks', () => {
+  const ir = anthropicEngine.parseReq({
+    model: 'test',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
+          },
+          { type: 'text', text: 'describe it' },
+        ],
+      },
+    ],
+    max_tokens: 100,
+  });
+
+  assert.deepEqual(ir.messages[0].content, [
+    { type: 'image', mediaType: 'image/png', data: 'abc123' },
+    { type: 'text', text: 'describe it' },
+  ]);
 });
 
 test('anthropic buildHeaders produces correct authorization', () => {
@@ -71,6 +98,35 @@ test('anthropic buildReq produces correct body', () => {
   assert.equal(body.system, 'Be brief.');
   assert.equal(body.messages.length, 1);
   assert.equal(body.messages[0].role, 'user');
+});
+
+test('anthropic buildReq preserves multimodal blocks', () => {
+  const ir = {
+    model: 'claude-sonnet-4-6',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
+          },
+          { type: 'text', text: 'Describe this image.' },
+        ],
+      },
+    ],
+    stream: false,
+  };
+
+  const body = anthropicEngine.buildReq(ir);
+  assert.equal(body.messages.length, 1);
+  assert.deepEqual(body.messages[0].content, [
+    {
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
+    },
+    { type: 'text', text: 'Describe this image.' },
+  ]);
 });
 
 test('anthropic buildRes creates an Anthropic message response', () => {

@@ -51,6 +51,36 @@ test('openai buildReq includes stream_options when streaming', () => {
   assert.deepEqual(body.stream_options, { include_usage: true });
 });
 
+test('openai buildReq preserves multimodal message parts', () => {
+  const ir = {
+    model: 'gpt-4.1',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Describe this image.' },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,abc123' },
+          },
+        ],
+      },
+    ],
+    stream: false,
+  };
+
+  const body = openaiEngine.buildReq(ir);
+  assert.deepEqual(body.messages, [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Describe this image.' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,abc123' } },
+      ],
+    },
+  ]);
+});
+
 test('openai buildRes creates a chat.completion response', () => {
   const res = openaiEngine.buildRes({
     content: 'hello!',
