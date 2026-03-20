@@ -1,7 +1,17 @@
+import { Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
 import { normalizeRequestLogRecord } from './db/client.js';
 import { getEngine } from './engines/index.js';
 import { collectEvents } from './ir.js';
-import { buildProviderUrl, emitDumpError, emitDumpRequestLine, emitDumpResponse, extractPromptText, finalizeDump } from './lib/http.js';
+import {
+  buildProviderUrl,
+  createUpstreamError,
+  emitDumpError,
+  emitDumpRequestLine,
+  emitDumpResponse,
+  extractPromptText,
+  finalizeDump,
+} from './lib/http.js';
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
 import { normalizeModelId, resolveNearestProviderModel, resolveProviderModel } from './lib/models.js';
 
@@ -201,6 +211,118 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, virtua
   }
 }
 
+export async function routePassthrough({
+  candidate,
+  db,
+  dump,
+  inboundEngine,
+  ir,
+  rawBody,
+  reply,
+  virtualKey,
+  onRequestLog,
+}) {
+  const requestedAt = new Date().toISOString();
+  const startedAt = Date.now();
+  const selectedModel = candidate.model;
+  const passthroughIr = selectedModel === ir.model ? ir : { ...ir, model: selectedModel };
+  const promptText = extractPromptText(ir);
+
+  emitDumpRequestLine(dump, {
+    requestedModel: ir.model,
+    selectedModel,
+    selectedKeyValue: candidate.key.value,
+    request: ir,
+    promptText,
+    promptChars: promptText.length,
+  });
+
+  try {
+    const { url, headers } = buildFetch(inboundEngine, passthroughIr, candidate.provider, candidate.key);
+    const body = buildPassthroughBody(inboundEngine.type, rawBody, ir, selectedModel);
+    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+
+    if (!response.ok) {
+      const upstream = await readUpstreamBody(response);
+      const error = createUpstreamError(url, response.status, upstream.body);
+      emitDumpError(dump, error.errorType, error.message);
+      finalizeDump(dump);
+      markFailure(db, candidate, error);
+      writeRequestLog(db, {
+        requestedAt,
+        virtualKey,
+        requestModel: ir.model,
+        selectedKey: candidate.key.name,
+        status: 'upstream_error',
+        errorType: error.errorType,
+        errorMessage: error.message,
+        latencyMs: Date.now() - startedAt,
+      }, onRequestLog);
+      reply.code(response.status);
+      copyResponseHeaders(reply, response);
+      return reply.send(upstream.rawText);
+    }
+
+    if (ir.stream && isEventStream(response) && response.body) {
+      const dumpPromise = collectPassthroughDump(inboundEngine, response.clone(), url, dump);
+      reply.hijack();
+      reply.raw.statusCode = response.status;
+      copyResponseHeaders(reply, response);
+      Readable.fromWeb(response.body).pipe(reply.raw);
+      await finished(reply.raw);
+      const usage = await dumpPromise;
+      finalizeDump(dump, usage);
+      db.markSuccess(candidate.key.name);
+      writeRequestLog(db, {
+        requestedAt,
+        virtualKey,
+        requestModel: ir.model,
+        selectedKey: candidate.key.name,
+        status: 'success',
+        latencyMs: Date.now() - startedAt,
+        inputTokens: usage?.inputTokens,
+        outputTokens: usage?.outputTokens,
+      }, onRequestLog);
+      return reply;
+    }
+
+    const dumpPromise = collectPassthroughDump(inboundEngine, response.clone(), url, dump)
+      .catch(() => null);
+    const upstream = await readUpstreamBody(response);
+    const usage = await dumpPromise;
+    finalizeDump(dump, usage);
+    db.markSuccess(candidate.key.name);
+    writeRequestLog(db, {
+      requestedAt,
+      virtualKey,
+      requestModel: ir.model,
+      selectedKey: candidate.key.name,
+      status: 'success',
+      latencyMs: Date.now() - startedAt,
+      inputTokens: usage?.inputTokens,
+      outputTokens: usage?.outputTokens,
+    }, onRequestLog);
+    reply.code(response.status);
+    copyResponseHeaders(reply, response);
+    return reply.send(upstream.rawText);
+  } catch (error) {
+    emitDumpError(dump, error.errorType ?? 'fatal', error.message);
+    finalizeDump(dump);
+    markFailure(db, candidate, error);
+    writeRequestLog(db, {
+      requestedAt,
+      virtualKey,
+      requestModel: ir.model,
+      selectedKey: candidate.key.name,
+      status: 'upstream_error',
+      errorType: error.errorType ?? 'fatal',
+      errorMessage: error.message,
+      latencyMs: Date.now() - startedAt,
+    }, onRequestLog);
+    throw error;
+  }
+}
+
 // Also export a simple invoke helper for discovery probing (non-stream, returns IR message)
 export async function invokeEngine(engine, provider, key, ir) {
   const { url, headers } = buildFetch(engine, ir, provider, key);
@@ -238,6 +360,70 @@ async function* tapDumpEvents(eventStream, dump) {
 
     yield event;
   }
+}
+
+async function collectPassthroughDump(engine, response, url, dump) {
+  if (!dump?.enabled) {
+    return null;
+  }
+
+  const message = await collectEvents(tapDumpEvents(engine.parse(response, url), dump));
+  return message.usage ?? null;
+}
+
+async function readUpstreamBody(response) {
+  const rawText = await response.text();
+  const contentType = response.headers.get('content-type') ?? '';
+  const body = !rawText
+    ? null
+    : contentType.includes('application/json')
+      ? JSON.parse(rawText)
+      : { text: rawText };
+
+  return { rawText, body };
+}
+
+function buildPassthroughBody(engineType, rawBody, ir, selectedModel) {
+  const body = structuredClone(rawBody ?? {});
+  if (selectedModel === ir.model) {
+    return body;
+  }
+
+  if (engineType === 'google') {
+    return body;
+  }
+
+  body.model = engineType === 'anthropic'
+    ? normalizeModelId(selectedModel)
+    : selectedModel;
+  return body;
+}
+
+function copyResponseHeaders(reply, response) {
+  response.headers.forEach((value, key) => {
+    const normalized = key.toLowerCase();
+    if (normalized === 'connection' || normalized === 'content-length' || normalized === 'transfer-encoding') {
+      return;
+    }
+    reply.raw.setHeader(key, value);
+  });
+}
+
+function isEventStream(response) {
+  return (response.headers.get('content-type') ?? '').includes('text/event-stream');
+}
+
+function markFailure(db, candidate, error) {
+  const errorType = error.errorType ?? 'fatal';
+  const disabledUntil = computeNextBoundary(
+    errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
+  );
+
+  db.markFailure(candidate.key.name, {
+    disabledUntil,
+    reason: errorType,
+    message: error.message,
+  });
 }
 
 function writeRequestLog(db, record, onRequestLog) {

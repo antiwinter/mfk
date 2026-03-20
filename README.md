@@ -6,6 +6,7 @@
 
 - Reads providers, models, and routing policy from a JSON config file keyed by upstream API key.
 - Routes by model, with optional explicit provider selection using the `provider` request field or `x-mfk-provider` header.
+- Preserves raw upstream request and response payloads when inbound and outbound protocols match, while still using IR for routing and dump metadata.
 - Exposes `/v1/models` and `/v1beta/models` from local config provider models instead of proxying upstream provider model lists.
 - Uses priority-based failover across keys and providers.
 - Can fall back to the nearest configured model tier when the requested model's provider is unavailable.

@@ -3,7 +3,7 @@ import { createDumpOptions, emitDumpError, emitDumpRequestLine, extractPromptTex
 import { extractVirtualKeyToken } from '../lib/virtualKey.js';
 import { openaiEngine, anthropicEngine, googleEngine } from '../engines/index.js';
 import { getCapabilityModels } from '../lib/models.js';
-import { route, routeStream } from '../router.js';
+import { route, routePassthrough, routeStream, selectCandidates } from '../router.js';
 
 export function createServer({ config, db, dump = false, dumpWrite, onRequestLog }) {
   const app = Fastify({ logger: false });
@@ -147,6 +147,23 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
     if (!ir.model) {
       reply.code(400);
       return buildErrorResponse(inboundEngine.type, { message: 'Request body must include model' });
+    }
+
+    const candidates = selectCandidates(config, db, ir);
+    const candidate = candidates[0] ?? null;
+
+    if (candidate?.provider.type === inboundEngine.type) {
+      return await routePassthrough({
+        candidate,
+        db,
+        dump,
+        inboundEngine,
+        ir,
+        rawBody: body,
+        reply,
+        virtualKey: virtualKey.virtual_key,
+        onRequestLog: runtime.onRequestLog,
+      });
     }
 
     if (ir.stream) {
