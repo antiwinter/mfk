@@ -24,7 +24,7 @@ Draft-state note: schema changes are not migrated. If the SQLite schema changes,
 
 ## Configuration
 
-The default config file is `~/.mfk/mfk.config.json`.
+The default config file is `~/.mfk/config.json`.
 
 ```json
 {
@@ -33,7 +33,7 @@ The default config file is `~/.mfk/mfk.config.json`.
     "port": 8787
   },
   "database": {
-    "path": "~/.mfk/mfk.sqlite"
+    "path": "~/.mfk/db.sqlite"
   },
   "modelTier": [
     ["opus-4-6"],

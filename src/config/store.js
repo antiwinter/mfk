@@ -12,8 +12,8 @@ const DEFAULT_SERVER = {
 };
 
 export const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.mfk');
-export const DEFAULT_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, 'mfk.config.json');
-export const DEFAULT_DATABASE_PATH = path.join(DEFAULT_CONFIG_DIR, 'mfk.sqlite');
+export const DEFAULT_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, 'config.json');
+export const DEFAULT_DATABASE_PATH = path.join(DEFAULT_CONFIG_DIR, 'db.sqlite');
 
 const DEFAULT_DATABASE = {
   path: DEFAULT_DATABASE_PATH,

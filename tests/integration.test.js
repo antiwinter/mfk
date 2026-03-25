@@ -8,7 +8,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 
-// Uses the real mfk.config.json — no synthetic config or env vars.
+// Uses the real ~/.mfk/config.json by default — no synthetic config or env vars.
 const { config: INTEGRATION_CONFIG } = await loadConfig();
 const FILTERS = parseIntegrationFilters(process.env);
 

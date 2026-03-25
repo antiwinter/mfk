@@ -9,7 +9,7 @@ Use the smallest test slice that matches your change.
 
 ## Current Live Routing Map
 
-Based on the current config in `~/.mfk/mfk.config.json` or your explicit `-c` override:
+Based on the current config in `~/.mfk/config.json` or your explicit `-c` override:
 
 - `anthropic/claude-sonnet-4-6` routes outbound to provider `1:anthropic`
 - `qwen3.5-plus` routes outbound to provider `2:anthropic`
