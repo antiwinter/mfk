@@ -123,6 +123,77 @@ If a provider supports inference but does not expose `/models`, pass a known wor
 mfk add https://coding.dashscope.aliyuncs.com/apps/anthropic my-secret-key --model qwen3.5-plus
 ```
 
+## OpenClaw Plugin
+
+`mfk` includes an OpenClaw provider plugin in `openclaw-plugin/` that enables auto-discovery of available models from a running `mfk` instance.
+
+### Install the Plugin
+
+Link the plugin into your OpenClaw installation:
+
+```bash
+openclaw plugins install --link ./openclaw-plugin
+```
+
+This creates a symlink from OpenClaw's extensions directory to your local `mfk` plugin source, allowing live development without reinstalling.
+
+### Plugin Configuration
+
+The plugin reads configuration from `openclaw.json`:
+
+**API Key Resolution** (first match wins):
+1. `env.MFK_API_KEY` — environment variable in shell or OpenClaw config
+2. `plugins.entries.mfk.config.apiKey` — plugin config fallback
+
+**Base URL**: Defaults to `http://127.0.0.1:8787`. Override via `plugins.entries.mfk.config.baseUrl`.
+
+Example `openclaw.json`:
+
+```json
+{
+  "env": {
+    "MFK_API_KEY": "mfk-your-virtual-key"
+  },
+  "plugins": {
+    "allow": ["mfk"],
+    "entries": {
+      "mfk": {
+        "enabled": true,
+        "config": {
+          "baseUrl": "http://127.0.0.1:8787"
+        }
+      }
+    }
+  }
+}
+```
+
+### Model Discovery
+
+The plugin queries the `mfk` instance at startup to discover available models:
+
+1. **Primary**: `/v1/models/info` — returns models with explicit `apiType` field
+2. **Fallback**: `/v1/models` — infers API type from model ID prefix (e.g., `anthropic/*` → Anthropic Messages API)
+
+Discovery is best-effort and silently skipped if `mfk` is not running or no API key is configured. When `mfk` starts, restart the OpenClaw gateway to trigger discovery.
+
+### Use in OpenClaw
+
+Configure your agent to use `mfk` models by prefixing model IDs with `mfk/`:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "mfk/anthropic/claude-sonnet-4-6",
+        "fallbacks": ["mfk/qwen3.5-plus"]
+      }
+    }
+  }
+}
+```
+
 ## Local API
 
 The local gateway exposes an OpenAI-style endpoint at `/v1/chat/completions`.

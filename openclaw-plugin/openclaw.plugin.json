@@ -1,0 +1,30 @@
+{
+  "id": "mfk",
+  "name": "mfk",
+  "description": "OpenClaw provider plugin for mfk — local LLM proxy with multi-provider key rotation.",
+  "version": "1.0.0",
+  "providers": ["mfk"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "type": "string"
+      },
+      "baseUrl": {
+        "type": "string"
+      }
+    }
+  },
+  "uiHints": {
+    "apiKey": {
+      "label": "mfk Virtual Key",
+      "placeholder": "mfk-...",
+      "sensitive": true
+    },
+    "baseUrl": {
+      "label": "mfk Base URL",
+      "placeholder": "http://127.0.0.1:8787"
+    }
+  }
+}

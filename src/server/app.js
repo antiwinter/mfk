@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import { createDumpOptions, emitDumpError, emitDumpRequestLine, extractPromptText, finalizeDump } from '../lib/http.js';
 import { extractVirtualKeyToken } from '../lib/virtualKey.js';
 import { openaiEngine, anthropicEngine, googleEngine } from '../engines/index.js';
-import { getCapabilityModels } from '../lib/models.js';
+import { getCapabilityModels, getCapabilityModelInfos } from '../lib/models.js';
 import { route, routePassthrough, routeStream, selectCandidates } from '../router.js';
 
 export function createServer({ config, db, dump = false, dumpWrite, onRequestLog }) {
@@ -22,7 +22,11 @@ export function createServer({ config, db, dump = false, dumpWrite, onRequestLog
 
   app.get('/health', async () => ({ status: 'ok' }));
 
-  // --- Model listing ---
+  // /v1/models/info — OpenClaw plugin discovery: model list with per-model apiType.
+  // No auth required (local metadata only).
+  app.get('/v1/models/info', async () => {
+    return { models: getCapabilityModelInfos(config) };
+  });
 
   app.get('/v1/models', async (request) => {
     const models = getCapabilityModels(config);

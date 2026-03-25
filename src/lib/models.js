@@ -16,6 +16,29 @@ export function getCapabilityModels(config) {
   return uniqueModels(providerModels.filter(isConcreteModel)).sort(compareText);
 }
 
+export function getCapabilityModelInfos(config) {
+  const providers = config?.providers ?? [];
+  return getCapabilityModels(config).map((id) => ({
+    id,
+    apiType: resolveApiTypeForModel(providers, id),
+  }));
+}
+
+function resolveApiTypeForModel(providers, modelId) {
+  for (const provider of providers) {
+    if (resolveProviderModel(provider, modelId)) {
+      return providerTypeToApiType(provider.type);
+    }
+  }
+  return 'openai-completions';
+}
+
+function providerTypeToApiType(type) {
+  if (type === 'anthropic') return 'anthropic-messages';
+  if (type === 'google') return 'google-genai';
+  return 'openai-completions';
+}
+
 export function resolveProviderModel(provider, requestedModel) {
   const normalizedRequested = normalizeModelId(requestedModel);
 

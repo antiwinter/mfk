@@ -1,0 +1,17 @@
+{
+  "name": "mfk",
+  "version": "1.0.0",
+  "description": "OpenClaw provider plugin for mfk — local LLM proxy with multi-provider key rotation.",
+  "main": "index.ts",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "mfk",
+    "provider"
+  ],
+  "license": "MIT"
+}

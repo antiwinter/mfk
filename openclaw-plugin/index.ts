@@ -1,0 +1,127 @@
+/**
+ * OpenClaw provider plugin for mfk (local LLM proxy).
+ *
+ * Registers an "mfk" provider that auto-discovers available models and their
+ * API types by querying the running mfk instance at startup.
+ *
+ * API key resolution order (first match wins):
+ *   1. MFK_API_KEY env var  — set in shell rc OR via openclaw.json `env.MFK_API_KEY`
+ *   2. plugins.entries.mfk.config.apiKey  — bottom-line fallback in openclaw.json
+ *
+ * Base URL defaults to http://127.0.0.1:8787 and can be overridden via
+ *   plugins.entries.mfk.config.baseUrl
+ */
+
+const DEFAULT_BASE_URL = "http://127.0.0.1:8787";
+const DISCOVERY_TIMEOUT_MS = 3000;
+
+interface ModelInfo {
+  id: string;
+  apiType: string;
+}
+
+interface ModelInfoResponse {
+  models: ModelInfo[];
+}
+
+interface ModelListResponse {
+  data: Array<{ id: string }>;
+}
+
+export default function register(api: any) {
+  api.registerProvider({
+    id: "mfk",
+    label: "mfk (local proxy)",
+
+    // No interactive auth — key comes from env or plugin config.
+    auth: [],
+
+    discovery: {
+      // "late" = local-network probe, runs after cheap env-only phases.
+      order: "late",
+
+      run: async (ctx: any) => {
+        const pluginConfig: Record<string, string> =
+          ctx.config?.plugins?.entries?.mfk?.config ?? {};
+
+        const apiKey =
+          process.env.MFK_API_KEY ??
+          pluginConfig.apiKey ??
+          null;
+
+        if (!apiKey) {
+          // No key configured — skip discovery silently.
+          return null;
+        }
+
+        const baseUrl = (pluginConfig.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
+
+        try {
+          const models = await fetchModelInfos(baseUrl);
+          if (!models || models.length === 0) return null;
+
+          return {
+            provider: {
+              baseUrl,
+              apiKey,
+              // Provider-level default; each model entry can override.
+              api: "openai-completions",
+              models: models.map((m) => ({
+                id: m.id,
+                api: m.apiType,
+              })),
+            },
+          };
+        } catch {
+          // Discovery is best-effort — mfk may not be running yet.
+          return null;
+        }
+      },
+    },
+  });
+}
+
+/**
+ * Fetch model metadata from mfk.
+ * Tries /v1/models/info first (richer, includes apiType).
+ * Falls back to /v1/models + prefix-based heuristic if the info endpoint
+ * isn't available (older mfk builds).
+ */
+async function fetchModelInfos(baseUrl: string): Promise<ModelInfo[] | null> {
+  const signal = AbortSignal.timeout(DISCOVERY_TIMEOUT_MS);
+
+  // Try the enriched endpoint first.
+  try {
+    const res = await fetch(`${baseUrl}/v1/models/info`, { signal });
+    if (res.ok) {
+      const body = (await res.json()) as ModelInfoResponse;
+      if (Array.isArray(body.models) && body.models.length > 0) {
+        return body.models;
+      }
+    }
+  } catch {
+    // Fall through to /v1/models fallback.
+  }
+
+  // Fallback: standard /v1/models + heuristic api type.
+  const res = await fetch(`${baseUrl}/v1/models`, {
+    signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+  });
+  if (!res.ok) return null;
+
+  const body = (await res.json()) as ModelListResponse;
+  if (!Array.isArray(body.data) || body.data.length === 0) return null;
+
+  return body.data.map((m) => ({
+    id: m.id,
+    apiType: inferApiType(m.id),
+  }));
+}
+
+/**
+ * Heuristic fallback when /v1/models/info isn't available.
+ * anthropic/* prefix → Anthropic Messages API; everything else → OpenAI.
+ */
+function inferApiType(modelId: string): string {
+  return modelId.startsWith("anthropic/") ? "anthropic-messages" : "openai-completions";
+}
