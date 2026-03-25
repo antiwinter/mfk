@@ -1,6 +1,5 @@
 import { createDatabase } from '../../db/client.js';
-import { loadConfig, resolveDatabasePath } from '../../config/store.js';
-import { formatProviderKey } from './providers.js';
+import { findProvider, formatProviderKey, loadConfig, resolveDatabasePath } from '../../config/store.js';
 
 export function registerResetCommand(program) {
   program
@@ -14,7 +13,7 @@ export function registerResetCommand(program) {
 
       const configPath = program.opts().config;
       const { config, dir } = await loadConfig(configPath);
-      const provider = resolveProviderForReset(config.providers, selector);
+      const provider = findProvider(config, selector);
       if (!provider) {
         throw new Error(`Unknown provider: ${selector}`);
       }
@@ -31,46 +30,4 @@ export function registerResetCommand(program) {
         db.close();
       }
     });
-}
-
-export function resolveProviderForReset(providers, selector) {
-  const value = String(selector ?? '').trim();
-  if (!value) {
-    return null;
-  }
-
-  const lowered = value.toLowerCase();
-  const exactMatch = providers.find((provider, index) => (
-    value === String(index + 1)
-    || value === provider.apiKey
-    || value === provider.baseUrl
-    || value === provider.id
-    || value === formatProviderKey(provider.apiKey)
-  ));
-
-  if (exactMatch) {
-    return exactMatch;
-  }
-
-  const partialMatches = providers.filter((provider) => {
-    const haystacks = [
-      provider.apiKey,
-      provider.baseUrl,
-      provider.id,
-      formatProviderKey(provider.apiKey),
-    ].map((entry) => String(entry ?? '').toLowerCase());
-
-    return haystacks.some((entry) => entry.includes(lowered));
-  });
-
-  if (partialMatches.length === 1) {
-    return partialMatches[0];
-  }
-
-  if (partialMatches.length > 1) {
-    const rendered = partialMatches.map((provider) => formatProviderKey(provider.apiKey)).join(', ');
-    throw new Error(`Ambiguous provider selector: ${selector} (${rendered})`);
-  }
-
-  return null;
 }

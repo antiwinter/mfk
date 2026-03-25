@@ -1,12 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { findProvider, formatProviderKey } from '../src/config/store.js';
 import {
-  formatProviderKey,
   formatProviderLine,
   formatProviderStatus,
   formatProviderUrl,
 } from '../src/cli/commands/providers.js';
-import { resolveProviderForReset } from '../src/cli/commands/reset.js';
 
 function stripAnsi(value) {
   return String(value).replace(/\u001b\[[0-9;]*m/g, '');
@@ -47,34 +46,38 @@ test('formatProviderLine includes domain, provider key, status, and note', () =>
   assert.equal(stripAnsi(rendered), 'api.anthropic...\tm1HG6A\tcooldown 1h\tPremature close');
 });
 
-test('resolveProviderForReset matches the displayed short key', () => {
-  const providers = [
-    {
-      apiKey: 'sk-49qf79jMD4AKU4xcm1HG6A',
-      baseUrl: 'http://llm.intchains.in:9000',
-      id: 'llm-intchains-in-9000-hg6a',
-    },
-  ];
+test('findProvider matches the displayed short key', () => {
+  const config = {
+    providers: [
+      {
+        apiKey: 'sk-49qf79jMD4AKU4xcm1HG6A',
+        baseUrl: 'http://llm.intchains.in:9000',
+        id: 'llm-intchains-in-9000-hg6a',
+      },
+    ],
+  };
 
-  const provider = resolveProviderForReset(providers, 'm1HG6A');
+  const provider = findProvider(config, 'm1HG6A');
 
   assert.equal(provider?.apiKey, 'sk-49qf79jMD4AKU4xcm1HG6A');
 });
 
-test('resolveProviderForReset supports partial matching and rejects ambiguity', () => {
-  const providers = [
-    {
-      apiKey: 'sk-49qf79jMD4AKU4xcm1HG6A',
-      baseUrl: 'http://llm.intchains.in:9000',
-      id: 'llm-intchains-in-9000-hg6a',
-    },
-    {
-      apiKey: 'sk-sp-65117f5d4715499aaf1a6652ca1599b0',
-      baseUrl: 'https://coding.dashscope.aliyuncs.com/apps/anthropic',
-      id: 'coding-dashscope-aliyuncs-com-99b0',
-    },
-  ];
+test('findProvider supports partial matching and rejects ambiguity', () => {
+  const config = {
+    providers: [
+      {
+        apiKey: 'sk-49qf79jMD4AKU4xcm1HG6A',
+        baseUrl: 'http://llm.intchains.in:9000',
+        id: 'llm-intchains-in-9000-hg6a',
+      },
+      {
+        apiKey: 'sk-sp-65117f5d4715499aaf1a6652ca1599b0',
+        baseUrl: 'https://coding.dashscope.aliyuncs.com/apps/anthropic',
+        id: 'coding-dashscope-aliyuncs-com-99b0',
+      },
+    ],
+  };
 
-  assert.equal(resolveProviderForReset(providers, 'intchains')?.id, 'llm-intchains-in-9000-hg6a');
-  assert.throws(() => resolveProviderForReset(providers, 'sk-'), /Ambiguous provider selector/);
+  assert.equal(findProvider(config, 'intchains')?.id, 'llm-intchains-in-9000-hg6a');
+  assert.throws(() => findProvider(config, 'sk-'), /Ambiguous provider selector/);
 });

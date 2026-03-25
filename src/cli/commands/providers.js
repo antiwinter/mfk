@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { millify } from 'millify';
 import { createDatabase } from '../../db/client.js';
-import { loadConfig, resolveDatabasePath } from '../../config/store.js';
+import { formatProviderKey, loadConfig, resolveDatabasePath } from '../../config/store.js';
 import { isCooldownActive } from '../../lib/time.js';
 
 export function registerProvidersCommand(program) {
@@ -63,15 +63,6 @@ export function formatProviderUrl(baseUrl) {
   }
 
   return `${domain.slice(0, 13)}...`;
-}
-
-export function formatProviderKey(apiKey) {
-  const value = String(apiKey ?? '').trim();
-  if (!value) {
-    return '-';
-  }
-
-  return value.slice(-6);
 }
 
 function summarizeNote(note) {

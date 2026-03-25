@@ -197,16 +197,53 @@ export function findProvider(config, selector) {
     return null;
   }
 
-  return config.providers.find((provider, index) => (
+  const exactMatch = config.providers.find((provider, index) => (
     value === String(index + 1)
     || value === provider.apiKey
     || value === provider.baseUrl
     || value === provider.id
-  )) ?? null;
+    || value === formatProviderKey(provider.apiKey)
+  ));
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const lowered = value.toLowerCase();
+  const partialMatches = config.providers.filter((provider) => {
+    const haystacks = [
+      provider.apiKey,
+      provider.baseUrl,
+      provider.id,
+      formatProviderKey(provider.apiKey),
+    ].map((entry) => String(entry ?? '').toLowerCase());
+
+    return haystacks.some((entry) => entry.includes(lowered));
+  });
+
+  if (partialMatches.length === 1) {
+    return partialMatches[0];
+  }
+
+  if (partialMatches.length > 1) {
+    const rendered = partialMatches.map((provider) => formatProviderKey(provider.apiKey)).join(', ');
+    throw new Error(`Ambiguous provider selector: ${selector} (${rendered})`);
+  }
+
+  return null;
 }
 
 export function formatProviderRef(provider) {
   return `${provider.order + 1}`;
+}
+
+export function formatProviderKey(apiKey) {
+  const value = String(apiKey ?? '').trim();
+  if (!value) {
+    return '-';
+  }
+
+  return value.slice(-6);
 }
 
 function serializeConfig(config, preservedModelTier) {
