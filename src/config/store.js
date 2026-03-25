@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { uniqueModels } from '../lib/http.js';
 
@@ -10,14 +11,18 @@ const DEFAULT_SERVER = {
   port: 8787,
 };
 
+export const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.mfk');
+export const DEFAULT_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, 'mfk.config.json');
+export const DEFAULT_DATABASE_PATH = path.join(DEFAULT_CONFIG_DIR, 'mfk.sqlite');
+
 const DEFAULT_DATABASE = {
-  path: './mfk.sqlite',
+  path: DEFAULT_DATABASE_PATH,
 };
 
 const DEFAULT_MODEL_TIER = [];
 
 export function resolveConfigPath(configPath) {
-  return path.resolve(process.cwd(), configPath ?? 'mfk.config.json');
+  return resolveUserPath(configPath ?? DEFAULT_CONFIG_PATH, process.cwd());
 }
 
 export function normalizeConfig(rawConfig) {
@@ -177,12 +182,13 @@ export async function saveConfig(configPath, config) {
   const serializedConfig = serializeConfig(normalized, preservedModelTier);
   const serialized = `${JSON.stringify(serializedConfig, null, 2)}\n`;
 
+  await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
   await fs.writeFile(resolvedPath, serialized, 'utf8');
   return resolvedPath;
 }
 
 export function resolveDatabasePath(configDir, dbPath) {
-  return path.resolve(configDir, dbPath ?? DEFAULT_DATABASE.path);
+  return resolveUserPath(dbPath ?? DEFAULT_DATABASE.path, configDir);
 }
 
 export function findProvider(config, selector) {
@@ -254,6 +260,24 @@ function serializeProvider(provider) {
 
 function stripTrailingSlash(value) {
   return value.replace(/\/$/, '');
+}
+
+function resolveUserPath(value, baseDir) {
+  const rawValue = String(value ?? '').trim();
+
+  if (!rawValue) {
+    return path.resolve(baseDir);
+  }
+
+  if (rawValue === '~') {
+    return os.homedir();
+  }
+
+  if (rawValue.startsWith('~/')) {
+    return path.join(os.homedir(), rawValue.slice(2));
+  }
+
+  return path.isAbsolute(rawValue) ? rawValue : path.resolve(baseDir, rawValue);
 }
 
 function compareText(left, right) {

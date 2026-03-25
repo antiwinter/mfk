@@ -3,8 +3,26 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { buildRuntimeProvider } from '../src/config/store.js';
-import { saveConfig } from '../src/config/store.js';
+import {
+  buildRuntimeProvider,
+  DEFAULT_CONFIG_PATH,
+  DEFAULT_DATABASE_PATH,
+  resolveConfigPath,
+  resolveDatabasePath,
+  saveConfig,
+} from '../src/config/store.js';
+
+test('resolveConfigPath defaults to ~/.mfk/mfk.config.json', () => {
+  assert.equal(resolveConfigPath(), DEFAULT_CONFIG_PATH);
+});
+
+test('resolveDatabasePath defaults to ~/.mfk/mfk.sqlite', () => {
+  assert.equal(resolveDatabasePath('/tmp/project'), DEFAULT_DATABASE_PATH);
+});
+
+test('resolveDatabasePath expands a home-directory database path', () => {
+  assert.equal(resolveDatabasePath('/tmp/project', '~/.mfk/custom.sqlite'), path.join(os.homedir(), '.mfk', 'custom.sqlite'));
+});
 
 test('saveConfig preserves an existing modelTier block from disk', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfk-config-'));

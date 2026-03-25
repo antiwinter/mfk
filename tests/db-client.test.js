@@ -145,3 +145,24 @@ test('request logs store virtual key, selected key, and token counts', () => {
     db.close();
   }
 });
+
+test('provider cooldown state can be reset', () => {
+  const db = createTempDb();
+
+  try {
+    db.markFailure('provider-a', {
+      disabledUntil: '2026-03-25T07:00:00.000Z',
+      reason: 'fatal',
+      message: 'Premature close',
+      timestamp: '2026-03-25T06:30:00.000Z',
+    });
+
+    const previous = db.resetKeyState('provider-a');
+
+    assert.equal(previous?.key_name, 'provider-a');
+    assert.equal(previous?.last_error, 'Premature close');
+    assert.equal(db.getKeyState('provider-a'), null);
+  } finally {
+    db.close();
+  }
+});

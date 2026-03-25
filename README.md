@@ -24,7 +24,7 @@ Draft-state note: schema changes are not migrated. If the SQLite schema changes,
 
 ## Configuration
 
-The default config file is `mfk.config.json`.
+The default config file is `~/.mfk/mfk.config.json`.
 
 ```json
 {
@@ -33,7 +33,7 @@ The default config file is `mfk.config.json`.
     "port": 8787
   },
   "database": {
-    "path": "./mfk.sqlite"
+    "path": "~/.mfk/mfk.sqlite"
   },
   "modelTier": [
     ["opus-4-6"],
@@ -94,6 +94,18 @@ List local virtual keys:
 
 ```bash
 mfk list
+```
+
+List providers with their key, live or cooldown status, and last error note:
+
+```bash
+mfk providers
+```
+
+Reset a provider cooldown using the key shown by `mfk providers`:
+
+```bash
+mfk reset llm-intchains-in-9000-hg6a
 ```
 
 Remove a local virtual key by alias or exact key:

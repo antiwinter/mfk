@@ -29,6 +29,10 @@ export function createDatabase(dbPath) {
       FROM key_state
       WHERE key_name = ?
     `),
+    deleteKeyState: db.prepare(`
+      DELETE FROM key_state
+      WHERE key_name = ?
+    `),
     upsertKeyState: db.prepare(`
       INSERT INTO key_state (
         key_name,
@@ -141,6 +145,15 @@ export function createDatabase(dbPath) {
       );
 
       return statements.getKeyState.get(keyName) ?? null;
+    },
+    resetKeyState(keyName) {
+      const current = statements.getKeyState.get(keyName) ?? null;
+      if (!current) {
+        return null;
+      }
+
+      statements.deleteKeyState.run(keyName);
+      return current;
     },
     logRequest(record) {
       const row = normalizeRequestLogRecord(record);
