@@ -41,8 +41,9 @@ export default function register(api: any) {
         const pluginConfig: Record<string, string> =
           ctx.config?.plugins?.entries?.mfk?.config ?? {};
 
+        // Read API key from models.providers.mfk.apiKey (single source of truth)
         const apiKey =
-          process.env.MFK_API_KEY ??
+          ctx.config?.models?.providers?.mfk?.apiKey ??
           pluginConfig.apiKey ??
           null;
 
@@ -53,7 +54,7 @@ export default function register(api: any) {
         const baseUrl = (pluginConfig.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
 
         try {
-          const models = await fetchModelInfos(baseUrl);
+          const models = await fetchModelInfos(baseUrl, apiKey);
           if (!models || models.length === 0) return null;
 
           return {
@@ -74,11 +75,17 @@ export default function register(api: any) {
   });
 }
 
-async function fetchModelInfos(baseUrl: string): Promise<ModelInfo[] | null> {
+async function fetchModelInfos(baseUrl: string, apiKey: string): Promise<ModelInfo[] | null> {
   const signal = AbortSignal.timeout(DISCOVERY_TIMEOUT_MS);
+  const headers = {
+    "Authorization": `Bearer ${apiKey}`,
+  };
 
   try {
-    const res = await fetch(`${baseUrl}/v1/models/info`, { signal });
+    const res = await fetch(`${baseUrl}/v1/models/info`, {
+      signal,
+      headers,
+    });
     if (res.ok) {
       const body = (await res.json()) as ModelInfoResponse;
       if (Array.isArray(body.models) && body.models.length > 0) {
@@ -91,6 +98,7 @@ async function fetchModelInfos(baseUrl: string): Promise<ModelInfo[] | null> {
 
   const res = await fetch(`${baseUrl}/v1/models`, {
     signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+    headers,
   });
   if (!res.ok) return null;
 
