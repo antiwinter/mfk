@@ -119,3 +119,33 @@ test('selectCandidates does not cross-provider fallback when an explicit provide
 
   assert.deepEqual(candidates, []);
 });
+
+test('selectCandidates matches a plain model request against a namespaced provider model by terminal name', () => {
+  const config = {
+    modelTier: [],
+    providers: [
+      createProvider({ id: 'anthropic', order: 0, models: ['anthropic/claude-sonnet-4-6'] }),
+    ],
+  };
+
+  const candidates = selectCandidates(config, createDb(), { model: 'claude-sonnet-4-6' });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].provider.id, 'anthropic');
+  assert.equal(candidates[0].model, 'anthropic/claude-sonnet-4-6');
+});
+
+test('selectCandidates matches terminal model names across different path prefixes', () => {
+  const config = {
+    modelTier: [],
+    providers: [
+      createProvider({ id: 'prefixed', order: 0, models: ['baz/bar'] }),
+    ],
+  };
+
+  const candidates = selectCandidates(config, createDb(), { model: 'foo/bar' });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].provider.id, 'prefixed');
+  assert.equal(candidates[0].model, 'baz/bar');
+});

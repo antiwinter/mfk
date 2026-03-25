@@ -6,6 +6,16 @@ export function normalizeModelId(model) {
   return String(model ?? '').replace(MODEL_NAMESPACE_PREFIX, '');
 }
 
+function extractModelName(model) {
+  const normalized = normalizeModelId(model).replace(/^\/+|\/+$/g, '');
+  if (!normalized) {
+    return '';
+  }
+
+  const segments = normalized.split('/').filter(Boolean);
+  return segments.at(-1) ?? '';
+}
+
 export function isConcreteModel(model) {
   return Boolean(model) && model !== '*' && !String(model).endsWith('/*');
 }
@@ -41,6 +51,7 @@ function providerTypeToApiType(type) {
 
 export function resolveProviderModel(provider, requestedModel) {
   const normalizedRequested = normalizeModelId(requestedModel);
+  const requestedName = extractModelName(requestedModel);
 
   for (const model of provider.models ?? []) {
     if (model === '*') {
@@ -55,7 +66,11 @@ export function resolveProviderModel(provider, requestedModel) {
       continue;
     }
 
-    if (model === requestedModel || normalizeModelId(model) === normalizedRequested) {
+    if (
+      model === requestedModel
+      || normalizeModelId(model) === normalizedRequested
+      || extractModelName(model) === requestedName
+    ) {
       return model;
     }
   }
@@ -104,8 +119,8 @@ export function getModelTierIndex(modelTier, model) {
 }
 
 export function modelsMatch(left, right) {
-  const normalizedLeft = normalizeModelId(left).toLowerCase();
-  const normalizedRight = normalizeModelId(right).toLowerCase();
+  const normalizedLeft = extractModelName(left).toLowerCase();
+  const normalizedRight = extractModelName(right).toLowerCase();
 
   if (!normalizedLeft || !normalizedRight) {
     return false;
