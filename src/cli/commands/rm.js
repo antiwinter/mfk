@@ -6,6 +6,7 @@ const VIRTUAL_KEY_PREFIX = 'mfk-';
 export function registerRmCommand(program) {
   program
     .command('rm <aliasOrKey>')
+    .helpGroup('Virtual Keys')
     .description('Remove a virtual key by alias or virtual key')
     .action(async (aliasOrKey, command) => {
       const selector = String(aliasOrKey ?? '').trim();

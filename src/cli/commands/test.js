@@ -4,6 +4,7 @@ import { discoverProviderModels, probeProviderModel } from '../../engines/discov
 export function registerTestCommand(program) {
   program
     .command('test <providerRef> [model]')
+    .helpGroup('Providers')
     .description('Test provider connectivity, report discovered models, and optionally probe one model')
     .action(async (...args) => {
       const providerRef = args[0];

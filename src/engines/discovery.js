@@ -12,7 +12,7 @@ import {
 
 const DETECTION_PRIORITY = ['anthropic', 'openai', 'google'];
 
-const DASHSCOPE_MODELS = ['glm-5', 'kimi-k2.5', 'qwen3-coder-plus', 'qwen3.5-plus', 'MiniMax-M2.5'];
+const DASHSCOPE_MODELS = ['glm-5', 'kimi-k2.5', 'qwen3-coder-plus', 'qwen3.5-plus', 'MiniMax-M2.5', 'MiniMax/MiniMax-M2.7'];
 
 export async function discoverProviderModels(provider) {
   if (!provider?.key) {

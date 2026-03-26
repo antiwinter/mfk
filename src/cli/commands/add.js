@@ -4,6 +4,7 @@ import { detectProviderConfiguration } from '../../engines/discovery.js';
 export function registerAddCommand(program) {
   program
     .command('add <urlPort> <key>')
+    .helpGroup('Providers')
     .description('Add a provider by auto-detecting its API style and importing its model list')
     .option('-m, --model <model>', 'Known working model to probe when the provider does not expose /models')
     .action(async (...args) => {

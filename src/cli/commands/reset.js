@@ -4,6 +4,7 @@ import { findProvider, formatProviderKey, loadConfig, resolveDatabasePath } from
 export function registerResetCommand(program) {
   program
     .command('reset <key>')
+    .helpGroup('Providers')
     .description('Reset provider cooldown state by provider key from mfk providers')
     .action(async (key) => {
       const selector = String(key ?? '').trim();

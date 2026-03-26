@@ -11,6 +11,7 @@ export function registerListCommand(program) {
   program
     .command('ls')
     .alias('list')
+    .helpGroup('Common')
     .description('List providers, models, and virtual keys')
     .option('-l, --long', 'Show models for each provider')
     .option('-k, --keys', 'Show virtual keys')

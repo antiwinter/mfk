@@ -8,6 +8,7 @@ const MAX_GENERATION_ATTEMPTS = 5;
 export function registerGenCommand(program) {
   program
     .command('gen <alias>')
+    .helpGroup('Virtual Keys')
     .description('Generate a virtual key for an alias')
     .action(async (alias, command) => {
       const trimmedAlias = String(alias ?? '').trim();

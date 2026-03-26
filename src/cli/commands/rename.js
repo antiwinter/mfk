@@ -4,6 +4,7 @@ import { loadConfig, resolveDatabasePath } from '../../config/store.js';
 export function registerRenameCommand(program) {
   program
     .command('rename <currentAlias> <nextAlias>')
+    .helpGroup('Virtual Keys')
     .description('Rename a virtual key alias')
     .action(async (currentAlias, nextAlias) => {
       const fromAlias = String(currentAlias ?? '').trim();

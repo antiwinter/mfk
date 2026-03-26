@@ -5,6 +5,7 @@ import { createServer } from '../../server/app.js';
 export function registerServeCommand(program) {
   program
     .command('serve')
+    .helpGroup('Common')
     .description('Start the local MFK HTTP gateway')
     .option('--host <host>', 'Host to bind to')
     .option('--port <port>', 'Port to bind to', parseNumber)

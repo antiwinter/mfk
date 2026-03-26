@@ -26,5 +26,25 @@ export function buildProgram() {
   registerResetCommand(program);
   registerRmCommand(program);
 
+  // Move the help command into the Common section
+  program.helpCommand(false);
+  program
+    .command('help [command]')
+    .helpGroup('Common')
+    .description('display help for command')
+    .action((cmd) => {
+      if (cmd) {
+        const target = program.commands.find((c) => c.name() === cmd || c.aliases().includes(cmd));
+        if (target) {
+          target.help();
+        } else {
+          console.error(`error: unknown command '${cmd}'`);
+          process.exit(1);
+        }
+      } else {
+        program.help();
+      }
+    });
+
   return program;
 }
