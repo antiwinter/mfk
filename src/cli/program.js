@@ -8,6 +8,7 @@ import { registerResetCommand } from './commands/reset.js';
 import { registerRmCommand } from './commands/rm.js';
 import { registerServeCommand } from './commands/serve.js';
 import { registerTestCommand } from './commands/test.js';
+import { registerUpdateCommand } from './commands/update.js';
 
 export function buildProgram() {
   const program = new Command();
@@ -20,6 +21,7 @@ export function buildProgram() {
   registerServeCommand(program);
   registerTestCommand(program);
   registerAddCommand(program);
+  registerUpdateCommand(program);
   registerGenCommand(program);
   registerListCommand(program);
   registerRenameCommand(program);
