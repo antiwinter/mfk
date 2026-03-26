@@ -3,7 +3,6 @@ import { DEFAULT_CONFIG_PATH } from '../config/store.js';
 import { registerAddCommand } from './commands/add.js';
 import { registerGenCommand } from './commands/gen.js';
 import { registerListCommand } from './commands/list.js';
-import { registerProvidersCommand } from './commands/providers.js';
 import { registerRenameCommand } from './commands/rename.js';
 import { registerResetCommand } from './commands/reset.js';
 import { registerRmCommand } from './commands/rm.js';
@@ -23,7 +22,6 @@ export function buildProgram() {
   registerAddCommand(program);
   registerGenCommand(program);
   registerListCommand(program);
-  registerProvidersCommand(program);
   registerRenameCommand(program);
   registerResetCommand(program);
   registerRmCommand(program);

@@ -32,11 +32,11 @@ export function registerProvidersCommand(program) {
 }
 
 export function formatProviderLine(provider, state, now = new Date()) {
-  const domain = formatProviderUrl(provider.baseUrl);
+  const domain = getProviderDomain(provider.baseUrl);
   const key = formatProviderKey(provider.apiKey);
   const status = formatProviderStatus(state, now);
   const note = summarizeNote(state?.last_error);
-  return `${domain}\t${key}\t${status}\t${note}`;
+  return `${key}\t${status}\t${domain}\t${note}`;
 }
 
 export function formatProviderStatus(state, now = new Date()) {
@@ -45,7 +45,7 @@ export function formatProviderStatus(state, now = new Date()) {
   }
 
   const remainingHours = Math.max((new Date(state.disabled_until).getTime() - now.getTime()) / 3_600_000, 0);
-  return chalk.red(`cooldown ${millify(remainingHours, { precision: 2 })}h`);
+  return chalk.red(`CD ${millify(remainingHours, { precision: 1 })}h`);
 }
 
 function getProviderDomain(baseUrl) {

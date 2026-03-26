@@ -19,7 +19,7 @@ test('formatProviderStatus renders cooldown hours with millify', () => {
   const state = { disabled_until: '2026-03-25T08:30:00.000Z' };
   const rendered = formatProviderStatus(state, new Date('2026-03-25T06:30:00.000Z'));
 
-  assert.equal(stripAnsi(rendered), 'cooldown 2h');
+  assert.equal(stripAnsi(rendered), 'CD 2h');
 });
 
 test('formatProviderUrl truncates long domains to 16 characters including ellipsis', () => {
@@ -43,7 +43,7 @@ test('formatProviderLine includes domain, provider key, status, and note', () =>
 
   const rendered = formatProviderLine(provider, state, new Date('2026-03-25T06:30:00.000Z'));
 
-  assert.equal(stripAnsi(rendered), 'api.anthropic...\tm1HG6A\tcooldown 1h\tPremature close');
+  assert.equal(stripAnsi(rendered), 'm1HG6A\tCD 1h\tapi.anthropic.com\tPremature close');
 });
 
 test('findProvider matches the displayed short key', () => {
