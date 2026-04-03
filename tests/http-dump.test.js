@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDumpOptions, emitDumpError, emitDumpRequestLine, emitDumpResponse, finalizeDump } from '../src/lib/http.js';
+import { createDump, emitError, emitRequest, emitResponse, finalize } from '../src/lib/dump.js';
 
 function stripAnsi(value) {
   return String(value).replace(/\x1B\[[0-9;]*m/g, '');
@@ -8,7 +8,7 @@ function stripAnsi(value) {
 
 test('dump emits request and response lines with one-line normalization and truncation', () => {
   const output = [];
-  const dump = createDumpOptions({
+  const dump = createDump({
     enabled: true,
     columns: 120,
     write(text) {
@@ -16,15 +16,15 @@ test('dump emits request and response lines with one-line normalization and trun
     },
   });
 
-  emitDumpRequestLine(dump, {
+  emitRequest(dump, {
     requestedModel: 'qwen3.5-plus',
     selectedModel: 'anthropic/claude-sonnet-4-6',
     selectedKeyValue: 'sk-1234567890abcdef',
     promptChars: 15500,
     promptText: 'hello\nworld this prompt should be truncated heavily',
   });
-  emitDumpResponse(dump, 'pong\nreply text should also be truncated independently');
-  finalizeDump(dump, {
+  emitResponse(dump, 'pong\nreply text should also be truncated independently');
+  finalize(dump, {
     inputTokens: 18000,
     outputTokens: 368,
   });
@@ -35,7 +35,7 @@ test('dump emits request and response lines with one-line normalization and trun
 
 test('dump renders failures with status plus truncated message', () => {
   const output = [];
-  const dump = createDumpOptions({
+  const dump = createDump({
     enabled: true,
     columns: 120,
     write(text) {
@@ -43,13 +43,13 @@ test('dump renders failures with status plus truncated message', () => {
     },
   });
 
-  emitDumpRequestLine(dump, {
+  emitRequest(dump, {
     requestedModel: 'qwen3.5-plus',
     promptChars: 5,
     promptText: 'hello',
   });
-  emitDumpError(dump, 'auth_error', 'Unknown\nvirtual key and a very long message that should be truncated');
-  finalizeDump(dump);
+  emitError(dump, 'auth_error', 'Unknown\nvirtual key and a very long message that should be truncated');
+  finalize(dump);
 
   assert.equal(stripAnsi(output.join('')), '-> qwen3.5-plus (-/qwen3.5-plus) hello [5]\n<< auth_error Unknown virtual key and a very long message that should be truncated\n');
 });

@@ -3,15 +3,8 @@ import { finished } from 'node:stream/promises';
 import { normalizeRequestLogRecord } from './db/client.js';
 import { getEngine } from './engines/index.js';
 import { collectEvents } from './ir.js';
-import {
-  buildProviderUrl,
-  createUpstreamError,
-  emitDumpError,
-  emitDumpRequestLine,
-  emitDumpResponse,
-  extractPromptText,
-  finalizeDump,
-} from './lib/http.js';
+import { buildProviderUrl, createUpstreamError } from './lib/http.js';
+import { emitError, emitRequest, emitResponse, finalize, extractPromptText } from './lib/dump.js';
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
 import { normalizeModelId, resolveNearestProviderModel, resolveProviderModel } from './lib/models.js';
 
@@ -35,15 +28,15 @@ export async function route({ config, db, ir, inboundEngine, virtualKey, dump, o
       errorType: 'routing',
       errorMessage: `No provider is configured for model ${ir.model}`,
     }, onRequestLog);
-    emitDumpRequestLine(dump, {
+    emitRequest(dump, {
       requestedModel: ir.model,
       selectedModel: ir.model,
       request: ir,
       promptText: extractPromptText(ir),
       promptChars: extractPromptText(ir).length,
     });
-    emitDumpError(dump, 'routing', `No provider is configured for model ${ir.model}`);
-    finalizeDump(dump);
+    emitError(dump, 'routing', `No provider is configured for model ${ir.model}`);
+    finalize(dump);
 
     const error = new Error(`No provider is configured for model ${ir.model}`);
     error.statusCode = 404;
@@ -57,7 +50,7 @@ export async function route({ config, db, ir, inboundEngine, virtualKey, dump, o
     const outboundEngine = getEngine(candidate.provider.type);
     const routedIr = candidate.model === ir.model ? ir : { ...ir, model: candidate.model };
     const promptText = extractPromptText(routedIr);
-    emitDumpRequestLine(dump, {
+    emitRequest(dump, {
       requestedModel: ir.model,
       selectedModel: candidate.model,
       selectedKeyValue: candidate.key.value,
@@ -73,7 +66,7 @@ export async function route({ config, db, ir, inboundEngine, virtualKey, dump, o
     const message = await collectEvents(irEvents);
     const usage = message.usage ?? null;
     const result = inboundEngine.buildRes(message);
-    finalizeDump(dump, usage);
+    finalize(dump, usage);
 
     db.markSuccess(candidate.key.name);
     writeRequestLog(db, {
@@ -89,8 +82,8 @@ export async function route({ config, db, ir, inboundEngine, virtualKey, dump, o
     return result;
   } catch (error) {
     const errorType = error.errorType ?? 'fatal';
-    emitDumpError(dump, errorType, error.message);
-    finalizeDump(dump);
+    emitError(dump, errorType, error.message);
+    finalize(dump);
     const disabledUntil = computeNextBoundary(
       errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
     );
@@ -126,15 +119,15 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, virtua
   });
 
   if (candidates.length === 0) {
-    emitDumpRequestLine(dump, {
+    emitRequest(dump, {
       requestedModel: ir.model,
       selectedModel: ir.model,
       request: ir,
       promptText: extractPromptText(ir),
       promptChars: extractPromptText(ir).length,
     });
-    emitDumpError(dump, 'routing', `No provider is configured for model ${ir.model}`);
-    finalizeDump(dump);
+    emitError(dump, 'routing', `No provider is configured for model ${ir.model}`);
+    finalize(dump);
     const error = new Error(`No provider is configured for model ${ir.model}`);
     error.statusCode = 404;
     throw error;
@@ -149,7 +142,7 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, virtua
       ? { ...ir, stream: true }
       : { ...ir, model: candidate.model, stream: true };
     const promptText = extractPromptText(streamIr);
-    emitDumpRequestLine(dump, {
+    emitRequest(dump, {
       requestedModel: ir.model,
       selectedModel: candidate.model,
       selectedKeyValue: candidate.key.value,
@@ -170,7 +163,7 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, virtua
     );
     await inboundEngine.writeStream(reply, irEvents, ir);
     const usage = finalMessage?.usage ?? null;
-    finalizeDump(dump, usage);
+    finalize(dump, usage);
 
     db.markSuccess(candidate.key.name);
     writeRequestLog(db, {
@@ -186,8 +179,8 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, virtua
     return;
   } catch (error) {
     const errorType = error.errorType ?? 'fatal';
-    emitDumpError(dump, errorType, error.message);
-    finalizeDump(dump);
+    emitError(dump, errorType, error.message);
+    finalize(dump);
     const disabledUntil = computeNextBoundary(
       errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
     );
@@ -228,7 +221,7 @@ export async function routePassthrough({
   const passthroughIr = selectedModel === ir.model ? ir : { ...ir, model: selectedModel };
   const promptText = extractPromptText(ir);
 
-  emitDumpRequestLine(dump, {
+  emitRequest(dump, {
     requestedModel: ir.model,
     selectedModel,
     selectedKeyValue: candidate.key.value,
@@ -245,8 +238,8 @@ export async function routePassthrough({
     if (!response.ok) {
       const upstream = await readUpstreamBody(response);
       const error = createUpstreamError(url, response.status, upstream.body);
-      emitDumpError(dump, error.errorType, error.message);
-      finalizeDump(dump);
+      emitError(dump, error.errorType, error.message);
+      finalize(dump);
       markFailure(db, candidate, error);
       writeRequestLog(db, {
         requestedAt,
@@ -271,7 +264,7 @@ export async function routePassthrough({
       Readable.fromWeb(response.body).pipe(reply.raw);
       await finished(reply.raw);
       const usage = await dumpPromise;
-      finalizeDump(dump, usage);
+      finalize(dump, usage);
       db.markSuccess(candidate.key.name);
       writeRequestLog(db, {
         requestedAt,
@@ -290,7 +283,7 @@ export async function routePassthrough({
       .catch(() => null);
     const upstream = await readUpstreamBody(response);
     const usage = await dumpPromise;
-    finalizeDump(dump, usage);
+    finalize(dump, usage);
     db.markSuccess(candidate.key.name);
     writeRequestLog(db, {
       requestedAt,
@@ -306,8 +299,8 @@ export async function routePassthrough({
     copyResponseHeaders(reply, response);
     return reply.send(upstream.rawText);
   } catch (error) {
-    emitDumpError(dump, error.errorType ?? 'fatal', error.message);
-    finalizeDump(dump);
+    emitError(dump, error.errorType ?? 'fatal', error.message);
+    finalize(dump);
     markFailure(db, candidate, error);
     writeRequestLog(db, {
       requestedAt,
@@ -353,9 +346,9 @@ async function* tapDumpEvents(eventStream, dump) {
   for await (const event of eventStream) {
     if (event.type === 'delta' && event.text) {
       sawDelta = true;
-      emitDumpResponse(dump, event.text);
+      emitResponse(dump, event.text);
     } else if (event.type === 'message' && event.content && !sawDelta) {
-      emitDumpResponse(dump, event.content);
+      emitResponse(dump, event.content);
     }
 
     yield event;

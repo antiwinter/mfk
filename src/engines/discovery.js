@@ -1,14 +1,7 @@
 import { getEngine } from './index.js';
 import { createIR, collectEvents } from '../ir.js';
-import {
-  buildProviderUrl,
-  createDumpOptions,
-  emitDumpError,
-  emitDumpRequestLine,
-  emitDumpResponse,
-  finalizeDump,
-  uniqueModels,
-} from '../lib/http.js';
+import { buildProviderUrl, uniqueModels } from '../lib/http.js';
+import { createDump, emitError, emitRequest, emitResponse, finalize } from '../lib/dump.js';
 
 const DETECTION_PRIORITY = ['anthropic', 'openai', 'google'];
 
@@ -58,8 +51,8 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
     ],
   });
 
-  const dump = createDumpOptions(handlers.echo);
-  emitDumpRequestLine(dump, {
+  const dump = createDump(handlers.echo);
+  emitRequest(dump, {
     requestedModel: model,
     selectedModel: model,
     selectedKeyValue: key.value,
@@ -80,7 +73,7 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
     for await (const event of events) {
       if (event.type === 'delta') {
         accumulated += event.text;
-        emitDumpResponse(dump, event.text);
+        emitResponse(dump, event.text);
       } else if (event.type === 'message') {
         message = event;
       }
@@ -99,12 +92,12 @@ export async function probeProviderModel(provider, key, model, handlers = {}) {
     const fetchBody = engine.buildReq(fallbackIr);
     const response = await fetch(fetchUrl, { method: 'POST', headers: fetchHeaders, body: JSON.stringify(fetchBody) });
     message = await collectEvents(engine.parse(response, fetchUrl));
-    emitDumpResponse(dump, message.content);
+    emitResponse(dump, message.content);
     if (!message?.content && error) {
-      emitDumpError(dump, error.errorType ?? 'retryable', error.message);
+      emitError(dump, error.errorType ?? 'retryable', error.message);
     }
   }
-  finalizeDump(dump, message?.usage);
+  finalize(dump, message?.usage);
 
   return {
     response: message,

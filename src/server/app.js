@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { createDumpOptions, emitDumpError, emitDumpRequestLine, extractPromptText, finalizeDump } from '../lib/http.js';
+import { createDump, emitError, emitRequest, finalize, extractPromptText } from '../lib/dump.js';
 import { extractVirtualKeyToken } from '../lib/virtualKey.js';
 import { openaiEngine, anthropicEngine, googleEngine } from '../engines/index.js';
 import { getCapabilityModels, getCapabilityModelInfos } from '../lib/models.js';
@@ -118,7 +118,7 @@ export function createServer({ config, db, dump = false, dumpWrite, onRequestLog
 }
 
 async function handleCompletion(request, reply, inboundEngine, config, db, parseParams, runtime = {}) {
-  const dump = createDumpOptions({
+  const dump = createDump({
     enabled: runtime.dump,
     write: runtime.dumpWrite,
   });
@@ -203,7 +203,7 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
     debugLog('error', { engine: inboundEngine.type, message: error.message, statusCode: error.statusCode ?? 400 });
     if (previewIr) {
       const promptText = extractPromptText(previewIr);
-      emitDumpRequestLine(dump, {
+      emitRequest(dump, {
         requestedModel: previewIr.model,
         selectedModel: previewIr.model,
         request: previewIr,
@@ -211,8 +211,8 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
         promptChars: promptText.length,
       });
     }
-    emitDumpError(dump, error.errorType ?? 'request_error', error.message);
-    finalizeDump(dump);
+    emitError(dump, error.errorType ?? 'request_error', error.message);
+    finalize(dump);
     reply.code(error.statusCode ?? 400);
     return buildErrorResponse(inboundEngine.type, error);
   }
