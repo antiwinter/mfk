@@ -8,6 +8,8 @@ import { emitError, emitRequest, emitResponse, finalize, extractPromptText } fro
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
 import { normalizeModelId, resolveNearestProviderModel, resolveProviderModel } from './lib/models.js';
 
+const PROVIDER_COOLDOWN_ENABLED = false;
+
 export async function route({ config, db, ir, inboundEngine, virtualKey, dump, onRequestLog }) {
   const candidates = selectCandidates(config, db, ir);
   const requestedAt = new Date().toISOString();
@@ -84,12 +86,8 @@ export async function route({ config, db, ir, inboundEngine, virtualKey, dump, o
     const errorType = error.errorType ?? 'fatal';
     emitError(dump, errorType, error.message);
     finalize(dump);
-    const disabledUntil = computeNextBoundary(
-      errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
-    );
-
     db.markFailure(candidate.key.name, {
-      disabledUntil,
+      disabledUntil: resolveDisabledUntil(candidate, errorType),
       reason: errorType,
       message: error.message,
     });
@@ -181,12 +179,8 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, virtua
     const errorType = error.errorType ?? 'fatal';
     emitError(dump, errorType, error.message);
     finalize(dump);
-    const disabledUntil = computeNextBoundary(
-      errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
-    );
-
     db.markFailure(candidate.key.name, {
-      disabledUntil,
+      disabledUntil: resolveDisabledUntil(candidate, errorType),
       reason: errorType,
       message: error.message,
     });
@@ -408,15 +402,22 @@ function isEventStream(response) {
 
 function markFailure(db, candidate, error) {
   const errorType = error.errorType ?? 'fatal';
-  const disabledUntil = computeNextBoundary(
-    errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
-  );
 
   db.markFailure(candidate.key.name, {
-    disabledUntil,
+    disabledUntil: resolveDisabledUntil(candidate, errorType),
     reason: errorType,
     message: error.message,
   });
+}
+
+function resolveDisabledUntil(candidate, errorType) {
+  if (!PROVIDER_COOLDOWN_ENABLED) {
+    return null;
+  }
+
+  return computeNextBoundary(
+    errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
+  );
 }
 
 function writeRequestLog(db, record, onRequestLog) {
@@ -439,7 +440,7 @@ export function selectCandidates(config, db, ir) {
 
     const key = provider.key;
     const state = db.getKeyState(key.name);
-    if (isCooldownActive(state?.disabled_until, now)) {
+    if (PROVIDER_COOLDOWN_ENABLED && isCooldownActive(state?.disabled_until, now)) {
       continue;
     }
 

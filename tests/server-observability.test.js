@@ -221,13 +221,13 @@ test('server returns the first provider failure without retrying a second provid
   assert.equal(db.failures.length, 1);
   assert.equal(db.failures[0].keyName, 'openai-provider');
   assert.equal(db.failures[0].reason, 'quota');
-  assert.match(db.failures[0].disabledUntil, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(db.failures[0].disabledUntil, null);
   assert.equal(db.logs.length, 1);
   assert.equal(db.logs[0].status, 'upstream_error');
   assert.equal(db.logs[0].selectedKey, 'openai-provider');
 });
 
-test('server applies failure cooldown for non-quota upstream errors', async (t) => {
+test('server records non-quota upstream failures without applying cooldown', async (t) => {
   const originalFetch = globalThis.fetch;
   const db = createObservedDb();
 
@@ -272,5 +272,5 @@ test('server applies failure cooldown for non-quota upstream errors', async (t) 
   assert.equal(db.failures.length, 1);
   assert.equal(db.failures[0].keyName, 'openai-provider');
   assert.equal(db.failures[0].reason, 'fatal');
-  assert.match(db.failures[0].disabledUntil, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(db.failures[0].disabledUntil, null);
 });

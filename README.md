@@ -234,3 +234,7 @@ Notes:
 - Streaming is not implemented in this version.
 - Request attempts are recorded in SQLite at the configured database path.
 - `mfk serve --dump` prints a single colored line per request with requested model, selected model, masked upstream key, prompt snippet, response or error snippet, and compact token counts.
+
+
+TODO:
+- [] move CD from provider level to model level, as provider may have different budget on different models

@@ -55,7 +55,7 @@ test('selectCandidates keeps exact model matches ahead of tier fallback', () => 
   assert.equal(candidates[0].tierDistance, 0);
 });
 
-test('selectCandidates falls back to the nearest configured model tier when the exact provider is cooling down', () => {
+test('selectCandidates ignores disabled_until while provider cooldowns are disabled', () => {
   const config = {
     modelTier: [
       ['opus-4-6'],
@@ -76,8 +76,8 @@ test('selectCandidates falls back to the nearest configured model tier when the 
   const candidates = selectCandidates(config, db, { model: 'qwen3.5-plus' });
 
   assert.equal(candidates.length, 1);
-  assert.equal(candidates[0].provider.id, 'anthropic');
-  assert.equal(candidates[0].model, 'anthropic/claude-sonnet-4-6');
+  assert.equal(candidates[0].provider.id, 'dashscope');
+  assert.equal(candidates[0].model, 'qwen3.5-plus');
   assert.equal(candidates[0].tierDistance, 0);
 });
 
