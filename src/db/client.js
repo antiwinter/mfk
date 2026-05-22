@@ -155,6 +155,23 @@ export function createDatabase(dbPath) {
       statements.deleteKeyState.run(keyName);
       return current;
     },
+    disableKey(keyName, reason = 'manual') {
+      const current = statements.getKeyState.get(keyName);
+      const consecutiveFailures = (current?.consecutive_failures ?? 0) + 1;
+      const timestamp = new Date().toISOString();
+
+      statements.upsertKeyState.run(
+        keyName,
+        '9999-12-31T23:59:59.999Z',
+        reason,
+        null,
+        timestamp,
+        current?.last_success_at ?? null,
+        consecutiveFailures,
+      );
+
+      return statements.getKeyState.get(keyName) ?? null;
+    },
     logRequest(record) {
       const row = normalizeRequestLogRecord(record);
       statements.insertRequestLog.run(

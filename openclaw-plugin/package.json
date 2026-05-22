@@ -5,7 +5,9 @@
   "main": "index.ts",
   "type": "module",
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "keywords": [
     "openclaw",
@@ -13,5 +15,8 @@
     "mfk",
     "provider"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
 }

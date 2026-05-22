@@ -1,11 +1,11 @@
 import { createDatabase } from '../../db/client.js';
 import { findProvider, formatProviderKey, loadConfig, resolveDatabasePath } from '../../config/store.js';
 
-export function registerResetCommand(program) {
+export function registerDisableCommand(program) {
   program
-    .command('reset <key>')
+    .command('disable <key>')
     .helpGroup('Providers')
-    .description('Reset provider cooldown state by provider key from mfk providers')
+    .description('Manually disable a provider key')
     .action(async (key) => {
       const selector = String(key ?? '').trim();
       if (!selector) {
@@ -23,10 +23,9 @@ export function registerResetCommand(program) {
       const db = createDatabase(dbPath);
 
       try {
-        const previous = db.resetKeyState(provider.key.name);
+        db.disableKey(provider.key.name);
         console.log(`provider: ${formatProviderKey(provider.apiKey)}`);
-        console.log('status: live');
-        console.log(`reset: ${previous ? 'ok' : 'noop'}`);
+        console.log('status: disabled');
       } finally {
         db.close();
       }

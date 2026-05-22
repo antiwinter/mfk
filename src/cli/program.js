@@ -3,8 +3,9 @@ import { DEFAULT_CONFIG_PATH } from '../config/store.js';
 import { registerAddCommand } from './commands/add.js';
 import { registerGenCommand } from './commands/gen.js';
 import { registerListCommand } from './commands/list.js';
+import { registerDisableCommand } from './commands/disable.js';
+import { registerEnableCommand } from './commands/enable.js';
 import { registerRenameCommand } from './commands/rename.js';
-import { registerResetCommand } from './commands/reset.js';
 import { registerRmCommand } from './commands/rm.js';
 import { registerServeCommand } from './commands/serve.js';
 import { registerTestCommand } from './commands/test.js';
@@ -25,7 +26,8 @@ export function buildProgram() {
   registerGenCommand(program);
   registerListCommand(program);
   registerRenameCommand(program);
-  registerResetCommand(program);
+  registerDisableCommand(program);
+  registerEnableCommand(program);
   registerRmCommand(program);
 
   // Move the help command into the Common section
