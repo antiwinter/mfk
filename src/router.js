@@ -8,8 +8,6 @@ import { emitError, emitRequest, emitResponse, finalize, extractPromptText } fro
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
 import { normalizeModelId, resolveNearestProviderModel, resolveProviderModel } from './lib/models.js';
 
-const PROVIDER_COOLDOWN_ENABLED = false;
-
 export async function route({ config, db, ir, inboundEngine, virtualKey, dump, onRequestLog }) {
   const candidates = selectCandidates(config, db, ir);
   const requestedAt = new Date().toISOString();
@@ -411,10 +409,6 @@ function markFailure(db, candidate, error) {
 }
 
 function resolveDisabledUntil(candidate, errorType) {
-  if (!PROVIDER_COOLDOWN_ENABLED) {
-    return null;
-  }
-
   return computeNextBoundary(
     errorType === 'quota' ? candidate.provider.quotaReset : candidate.provider.failureReset,
   );
@@ -440,7 +434,7 @@ export function selectCandidates(config, db, ir) {
 
     const key = provider.key;
     const state = db.getKeyState(key.name);
-    if (PROVIDER_COOLDOWN_ENABLED && isCooldownActive(state?.disabled_until, now)) {
+    if (isCooldownActive(state?.disabled_until, now)) {
       continue;
     }
 
