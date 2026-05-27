@@ -20,10 +20,8 @@ export function registerTestCommand(program) {
       if (!provider.key) {
         throw new Error(`Provider ${providerRef} has no key configured`);
       }
-      const result = await discoverProviderModels(provider);
-
       if (model) {
-        const probe = await probeProviderModel(provider, result.key, model, {
+        const probe = await probeProviderModel(provider, provider.key, model, {
           echo: {
             enabled: true,
           },
@@ -32,6 +30,14 @@ export function registerTestCommand(program) {
         console.log(`probe_latency_ms: ${probe.latencyMs}`);
         console.log('probe_status: ok');
         return;
+      }
+
+      let result;
+      try {
+        result = await discoverProviderModels(provider);
+      } catch (error) {
+        console.error(`Provider ${providerRef} discovery failed: ${error.message}`);
+        throw error;
       }
 
   console.log(`provider: ${formatProviderRef(provider)}`);
