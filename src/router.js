@@ -468,6 +468,10 @@ export function selectCandidates(config, db, ir) {
     return exactCandidates.sort(compareCandidates);
   }
 
+  if (config.tierRouting === false) {
+    return [];
+  }
+
   const fallbackCandidates = availableProviders
     .map((candidate) => {
       const nearestModel = resolveNearestProviderModel(config.modelTier, candidate.provider, ir.model);

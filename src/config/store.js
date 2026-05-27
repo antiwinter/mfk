@@ -20,6 +20,7 @@ const DEFAULT_DATABASE = {
 };
 
 const DEFAULT_MODEL_TIER = [];
+const DEFAULT_TIER_ROUTING = true;
 
 export function resolveConfigPath(configPath) {
   return resolveUserPath(configPath ?? DEFAULT_CONFIG_PATH, process.cwd());
@@ -39,8 +40,13 @@ export function normalizeConfig(rawConfig) {
       ...(config.database ?? {}),
     },
     modelTier: normalizeModelTier(config.modelTier),
+    tierRouting: normalizeTierRouting(config.tierRouting),
     providers,
   };
+}
+
+function normalizeTierRouting(raw) {
+  return raw === false ? false : DEFAULT_TIER_ROUTING;
 }
 
 function normalizeModelTier(rawModelTier) {
