@@ -84,11 +84,13 @@ export async function route({ config, db, ir, inboundEngine, virtualKey, dump, o
     const errorType = error.errorType ?? 'fatal';
     emitError(dump, errorType, error.message);
     finalize(dump);
-    db.markFailure(candidate.key.name, {
-      disabledUntil: resolveDisabledUntil(candidate, errorType),
-      reason: errorType,
-      message: error.message,
-    });
+    if (errorType !== 'cancellation') {
+      db.markFailure(candidate.key.name, {
+        disabledUntil: resolveDisabledUntil(candidate, errorType),
+        reason: errorType,
+        message: error.message,
+      });
+    }
     writeRequestLog(db, {
       requestedAt,
       virtualKey,
@@ -177,11 +179,13 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, virtua
     const errorType = error.errorType ?? 'fatal';
     emitError(dump, errorType, error.message);
     finalize(dump);
-    db.markFailure(candidate.key.name, {
-      disabledUntil: resolveDisabledUntil(candidate, errorType),
-      reason: errorType,
-      message: error.message,
-    });
+    if (errorType !== 'cancellation') {
+      db.markFailure(candidate.key.name, {
+        disabledUntil: resolveDisabledUntil(candidate, errorType),
+        reason: errorType,
+        message: error.message,
+      });
+    }
     writeRequestLog(db, {
       requestedAt,
       virtualKey,
@@ -400,6 +404,7 @@ function isEventStream(response) {
 
 function markFailure(db, candidate, error) {
   const errorType = error.errorType ?? 'fatal';
+  if (errorType === 'cancellation') return;
 
   db.markFailure(candidate.key.name, {
     disabledUntil: resolveDisabledUntil(candidate, errorType),

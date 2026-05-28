@@ -67,6 +67,10 @@ function classifyErrorType(statusCode, body, message) {
   const code = body?.error?.code ?? body?.error?.type ?? body?.status ?? '';
   const detail = `${String(code)} ${message}`.toLowerCase();
 
+  if (/premature close|aborted|this operation was aborted|user aborted/.test(detail)) {
+    return 'cancellation';
+  }
+
   if (statusCode === 429 && /quota|insufficient_quota|out of quota|resource exhausted/.test(detail)) {
     return 'quota';
   }
