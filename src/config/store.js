@@ -4,7 +4,7 @@ import path from 'node:path';
 import { uniqueModels } from '../lib/http.js';
 
 const DEFAULT_QUOTA_RESET = 'daily';
-const DEFAULT_FAILURE_RESET = 'hourly';
+const DEFAULT_FAILURE_RESET = 'next_try';
 
 const DEFAULT_SERVER = {
   host: '127.0.0.1',
