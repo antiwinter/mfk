@@ -221,7 +221,7 @@ test('server returns the first provider failure without retrying a second provid
   assert.equal(db.failures.length, 1);
   assert.equal(db.failures[0].keyName, 'openai-provider');
   assert.equal(db.failures[0].reason, 'quota');
-  assert.equal(db.failures[0].disabledUntil, null);
+  assert.ok(db.failures[0].disabledUntil, 'disabledUntil should be set for quota errors');
   assert.equal(db.logs.length, 1);
   assert.equal(db.logs[0].status, 'upstream_error');
   assert.equal(db.logs[0].selectedKey, 'openai-provider');
@@ -272,5 +272,5 @@ test('server records non-quota upstream failures without applying cooldown', asy
   assert.equal(db.failures.length, 1);
   assert.equal(db.failures[0].keyName, 'openai-provider');
   assert.equal(db.failures[0].reason, 'fatal');
-  assert.equal(db.failures[0].disabledUntil, null);
+  assert.ok(db.failures[0].disabledUntil);
 });

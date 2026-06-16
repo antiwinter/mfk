@@ -1,94 +1,85 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import {
-  buildRuntimeProvider,
-  DEFAULT_CONFIG_PATH,
-  DEFAULT_DATABASE_PATH,
-  resolveConfigPath,
-  resolveDatabasePath,
-  saveConfig,
-} from '../src/config/store.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { ConfigStore } from '../src/config/store.js';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
-test('resolveConfigPath defaults to ~/.mfk/config.json', () => {
-  assert.equal(resolveConfigPath(), DEFAULT_CONFIG_PATH);
+let tmpDir;
+let store;
+
+beforeEach(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mfk-test-'));
+  store = new ConfigStore(path.join(tmpDir, 'config.json'));
 });
 
-test('resolveDatabasePath defaults to ~/.mfk/db.sqlite', () => {
-  assert.equal(resolveDatabasePath('/tmp/project'), DEFAULT_DATABASE_PATH);
+afterEach(() => {
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-test('resolveDatabasePath expands a home-directory database path', () => {
-  assert.equal(resolveDatabasePath('/tmp/project', '~/.mfk/custom.sqlite'), path.join(os.homedir(), '.mfk', 'custom.sqlite'));
+describe('ConfigStore - providers', () => {
+  it('adds a provider and assigns a short key', () => {
+    const key = store.addProvider({ name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-123' });
+    expect(key).toBeTruthy();
+    expect(key.length).toBe(5);
+    const p = store.getProvider(key);
+    expect(p).toBeDefined();
+    expect(p.name).toBe('OpenAI');
+  });
+
+  it('resolves provider by short key', () => {
+    const key = store.addProvider({ name: 'Test', baseUrl: 'https://test.com', apiKey: 'sk-abc' });
+    const p = store.resolveProvider(key);
+    expect(p).toBeDefined();
+    expect(p.shortKey).toBe(key);
+  });
+
+  it('resolves provider by full api key', () => {
+    store.addProvider({ name: 'Test', baseUrl: 'https://test.com', apiKey: 'sk-fullkey-xyz' });
+    const p = store.resolveProvider('sk-fullkey-xyz');
+    expect(p).toBeDefined();
+    expect(p.name).toBe('Test');
+  });
+
+  it('resolves provider by index', () => {
+    store.addProvider({ name: 'First', baseUrl: 'https://first.com', apiKey: 'sk-1' });
+    store.addProvider({ name: 'Second', baseUrl: 'https://second.com', apiKey: 'sk-2' });
+    const p = store.resolveProvider(0);
+    expect(p).toBeDefined();
+    expect(p.name).toBe('First');
+  });
+
+  it('returns undefined for unknown provider', () => {
+    const p = store.resolveProvider('zzzzz');
+    expect(p).toBeUndefined();
+  });
+
+  it('lists providers with short keys', () => {
+    store.addProvider({ name: 'A', baseUrl: 'https://a.com', apiKey: 'sk-a' });
+    store.addProvider({ name: 'B', baseUrl: 'https://b.com', apiKey: 'sk-b' });
+    const list = store.listProviders();
+    expect(list.length).toBe(2);
+    expect(list[0].shortKey).toBeDefined();
+    expect(list[1].shortKey).toBeDefined();
+  });
 });
 
-test('saveConfig preserves an existing modelTier block from disk', async () => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfk-config-'));
-  const configPath = path.join(tempDir, 'config.json');
-
-  await fs.writeFile(configPath, `${JSON.stringify({
-    server: { host: '127.0.0.1', port: 8787 },
-    database: { path: './db.sqlite' },
-    modelTier: [['sonnet-4-6', 'qwen3.5-plus']],
-    providers: {},
-  }, null, 2)}\n`, 'utf8');
-
-  await saveConfig(configPath, {
-    server: { host: '127.0.0.1', port: 8787 },
-    database: { path: './db.sqlite' },
-    modelTier: [['ignored-at-runtime-save']],
-    providers: [],
+describe('ConfigStore - rules', () => {
+  it('adds a rule with provider short key', () => {
+    const providerKey = store.addProvider({ name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-123' });
+    store.addRule({ alias: 'gpt4', provider: providerKey, model: 'gpt-4' });
+    const rules = store.listRules();
+    expect(rules.length).toBe(1);
+    expect(rules[0].alias).toBe('gpt4');
+    expect(rules[0].provider).toBe(providerKey);
   });
 
-  const saved = JSON.parse(await fs.readFile(configPath, 'utf8'));
-  assert.deepEqual(saved.modelTier, [['sonnet-4-6', 'qwen3.5-plus']]);
-});
-
-test('saveConfig does not invent a modelTier block when the file did not have one', async () => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfk-config-'));
-  const configPath = path.join(tempDir, 'config.json');
-
-  await saveConfig(configPath, {
-    server: { host: '127.0.0.1', port: 8787 },
-    database: { path: './db.sqlite' },
-    modelTier: [['runtime-only']],
-    providers: [],
+  it('resolves rule provider to short key', () => {
+    const providerKey = store.addProvider({ name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-123' });
+    store.addRule({ alias: 'gpt4', provider: 'sk-123', model: 'gpt-4' });
+    const rules = store.listRules();
+    // provider stored as-is, but resolveProvider should work
+    const p = store.resolveProvider(rules[0].provider);
+    expect(p).toBeDefined();
+    expect(p.shortKey).toBe(providerKey);
   });
-
-  const saved = JSON.parse(await fs.readFile(configPath, 'utf8'));
-  assert.equal('modelTier' in saved, false);
-});
-
-test('saveConfig preserves normalized runtime providers instead of dropping them', async () => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mfk-config-'));
-  const configPath = path.join(tempDir, 'config.json');
-
-  const providerA = buildRuntimeProvider({
-    apiKey: 'sk-provider-a',
-    baseUrl: 'https://a.example.com',
-    type: 'anthropic',
-    models: ['anthropic/claude-sonnet-4-6'],
-    order: 0,
-  });
-  const providerB = buildRuntimeProvider({
-    apiKey: 'sk-provider-b',
-    baseUrl: 'https://b.example.com',
-    type: 'openai',
-    models: ['qwen3.5-plus'],
-    order: 1,
-  });
-
-  await saveConfig(configPath, {
-    server: { host: '127.0.0.1', port: 8787 },
-    database: { path: './db.sqlite' },
-    modelTier: [],
-    providers: [providerA, providerB],
-  });
-
-  const saved = JSON.parse(await fs.readFile(configPath, 'utf8'));
-  assert.deepEqual(Object.keys(saved.providers), ['sk-provider-a', 'sk-provider-b']);
-  assert.equal(saved.providers['sk-provider-a'].url, 'https://a.example.com');
-  assert.equal(saved.providers['sk-provider-b'].url, 'https://b.example.com');
 });

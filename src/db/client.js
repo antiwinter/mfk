@@ -74,8 +74,14 @@ export function createDatabase(dbPath) {
       INSERT INTO virtual_keys (
         alias,
         virtual_key,
-        created_at
-      ) VALUES (?, ?, ?)
+        created_at,
+        route
+      ) VALUES (?, ?, ?, ?)
+    `),
+    updateVirtualKeyRoute: db.prepare(`
+      UPDATE virtual_keys
+      SET route = ?
+      WHERE alias = ?
     `),
     getVirtualKeyByAlias: db.prepare(`
       SELECT *
@@ -192,8 +198,17 @@ export function createDatabase(dbPath) {
     listRequestLogs() {
       return statements.listRequestLogs.all();
     },
-    createVirtualKey(alias, virtualKey, createdAt = new Date().toISOString()) {
-      statements.insertVirtualKey.run(alias, virtualKey, createdAt);
+    createVirtualKey(alias, virtualKey, createdAt = new Date().toISOString(), route = null) {
+      statements.insertVirtualKey.run(alias, virtualKey, createdAt, route);
+      return statements.getVirtualKeyByAlias.get(alias) ?? null;
+    },
+    setVirtualKeyRoute(alias, route) {
+      const existing = statements.getVirtualKeyByAlias.get(alias) ?? null;
+      if (!existing) {
+        return null;
+      }
+
+      statements.updateVirtualKeyRoute.run(route ?? null, alias);
       return statements.getVirtualKeyByAlias.get(alias) ?? null;
     },
     findVirtualKeyByAlias(alias) {
@@ -258,7 +273,8 @@ function initialize(db) {
     CREATE TABLE IF NOT EXISTS virtual_keys (
       alias TEXT PRIMARY KEY,
       virtual_key TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      route TEXT
     );
 
     CREATE TABLE IF NOT EXISTS request_log (
@@ -275,4 +291,7 @@ function initialize(db) {
       output_tokens INTEGER
     );
   `);
+
+  // Migration: add route column to existing databases that predate this feature
+  try { db.exec('ALTER TABLE virtual_keys ADD COLUMN route TEXT'); } catch {}
 }

@@ -141,6 +141,16 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
 
     ir.provider = request.headers['x-mfk-provider'] ?? ir.provider;
 
+    if (virtualKey.route) {
+      const slashIdx = virtualKey.route.indexOf('/');
+      if (slashIdx !== -1) {
+        ir.provider = virtualKey.route.slice(0, slashIdx);
+        ir.model = virtualKey.route.slice(slashIdx + 1);
+      } else {
+        ir.model = virtualKey.route;
+      }
+    }
+
     debugLog('request', {
       engine: inboundEngine.type,
       model: ir.model,

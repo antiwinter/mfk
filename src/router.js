@@ -6,7 +6,8 @@ import { collectEvents } from './ir.js';
 import { buildProviderUrl, createUpstreamError } from './lib/http.js';
 import { emitError, emitRequest, emitResponse, finalize, extractPromptText } from './lib/dump.js';
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
-import { normalizeModelId, resolveNearestProviderModel, resolveProviderModel } from './lib/models.js';
+import { normalizeModelId, resolveProviderModel } from './lib/models.js';
+import { formatProviderKey } from './config/store.js';
 
 export async function route({ config, db, ir, inboundEngine, virtualKey, dump, onRequestLog }) {
   const candidates = selectCandidates(config, db, ir);
@@ -430,7 +431,6 @@ export function selectCandidates(config, db, ir) {
   const now = new Date();
   const requestedProvider = ir.provider?.trim();
   const exactCandidates = [];
-  const availableProviders = [];
 
   for (const provider of config.providers) {
     if (requestedProvider && !matchesProviderSelector(provider, requestedProvider)) {
@@ -443,12 +443,6 @@ export function selectCandidates(config, db, ir) {
       continue;
     }
 
-    availableProviders.push({
-      provider,
-      key,
-      keyState: state,
-    });
-
     const model = provider.models.length === 0 ? ir.model : resolveProviderModel(provider, ir.model);
     if (!model) {
       continue;
@@ -459,46 +453,13 @@ export function selectCandidates(config, db, ir) {
       key,
       keyState: state,
       model,
-      tierDistance: 0,
     });
   }
 
-  if (exactCandidates.length > 0 || requestedProvider) {
-    return exactCandidates.sort(compareCandidates);
-  }
-
-  if (config.tierRouting === false) {
-    return [];
-  }
-
-  const fallbackCandidates = availableProviders
-    .map((candidate) => {
-      const nearestModel = resolveNearestProviderModel(config.modelTier, candidate.provider, ir.model);
-      if (!nearestModel) {
-        return null;
-      }
-
-      return {
-        ...candidate,
-        model: nearestModel.model,
-        tierDistance: nearestModel.distance,
-        tierIndex: nearestModel.tierIndex,
-      };
-    })
-    .filter(Boolean);
-
-  return fallbackCandidates.sort(compareCandidates);
+  return exactCandidates.sort(compareCandidates);
 }
 
 function compareCandidates(left, right) {
-  if ((left.tierDistance ?? 0) !== (right.tierDistance ?? 0)) {
-    return (left.tierDistance ?? 0) - (right.tierDistance ?? 0);
-  }
-
-  if ((left.tierIndex ?? Number.MAX_SAFE_INTEGER) !== (right.tierIndex ?? Number.MAX_SAFE_INTEGER)) {
-    return (left.tierIndex ?? Number.MAX_SAFE_INTEGER) - (right.tierIndex ?? Number.MAX_SAFE_INTEGER);
-  }
-
   if (left.provider.priority !== right.provider.priority) {
     return left.provider.priority - right.provider.priority;
   }
@@ -511,7 +472,8 @@ function matchesProviderSelector(provider, selector) {
     || selector === provider.baseUrl
     || selector === provider.apiKey
     || selector === provider.id
-    || selector === String(provider.order + 1);
+    || selector === String(provider.order + 1)
+    || selector === formatProviderKey(provider.apiKey);
 }
 
 function debugLog(event, payload) {

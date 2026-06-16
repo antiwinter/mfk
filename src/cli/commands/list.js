@@ -43,9 +43,9 @@ export function registerListCommand(program) {
           if (records.length === 0) {
             console.log('No virtual keys found');
           } else {
-            console.log('ALIAS\tVIRTUAL KEY');
+            console.log('ALIAS\tVIRTUAL KEY\tROUTING');
             for (const record of records) {
-              console.log(`${record.alias}\t${record.virtual_key}`);
+              console.log(`${record.alias}\t${record.virtual_key}\t${record.route ?? 'auto'}`);
             }
           }
         }

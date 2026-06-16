@@ -7,6 +7,7 @@ import { registerDisableCommand } from './commands/disable.js';
 import { registerEnableCommand } from './commands/enable.js';
 import { registerRenameCommand } from './commands/rename.js';
 import { registerRmCommand } from './commands/rm.js';
+import { registerRouteCommand } from './commands/route.js';
 import { registerServeCommand } from './commands/serve.js';
 import { registerTestCommand } from './commands/test.js';
 import { registerUpdateCommand } from './commands/update.js';
@@ -29,6 +30,7 @@ export function buildProgram() {
   registerDisableCommand(program);
   registerEnableCommand(program);
   registerRmCommand(program);
+  registerRouteCommand(program);
 
   // Move the help command into the Common section
   program.helpCommand(false);

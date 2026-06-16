@@ -19,9 +19,6 @@ const DEFAULT_DATABASE = {
   path: DEFAULT_DATABASE_PATH,
 };
 
-const DEFAULT_MODEL_TIER = [];
-const DEFAULT_TIER_ROUTING = true;
-
 export function resolveConfigPath(configPath) {
   return resolveUserPath(configPath ?? DEFAULT_CONFIG_PATH, process.cwd());
 }
@@ -39,24 +36,8 @@ export function normalizeConfig(rawConfig) {
       ...DEFAULT_DATABASE,
       ...(config.database ?? {}),
     },
-    modelTier: normalizeModelTier(config.modelTier),
-    tierRouting: normalizeTierRouting(config.tierRouting),
     providers,
   };
-}
-
-function normalizeTierRouting(raw) {
-  return raw === false ? false : DEFAULT_TIER_ROUTING;
-}
-
-function normalizeModelTier(rawModelTier) {
-  if (!Array.isArray(rawModelTier)) {
-    return [...DEFAULT_MODEL_TIER];
-  }
-
-  return rawModelTier
-    .map((group) => uniqueModels(Array.isArray(group) ? group.filter(Boolean) : []))
-    .filter((group) => group.length > 0);
 }
 
 function normalizeProviders(rawProviders) {
@@ -184,8 +165,7 @@ export async function loadConfig(configPath) {
 export async function saveConfig(configPath, config) {
   const resolvedPath = resolveConfigPath(configPath);
   const normalized = normalizeConfig(config);
-  const preservedModelTier = await loadPersistedModelTier(resolvedPath);
-  const serializedConfig = serializeConfig(normalized, preservedModelTier);
+  const serializedConfig = serializeConfig(normalized);
   const serialized = `${JSON.stringify(serializedConfig, null, 2)}\n`;
 
   await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
@@ -252,8 +232,8 @@ export function formatProviderKey(apiKey) {
   return value.slice(-6);
 }
 
-function serializeConfig(config, preservedModelTier) {
-  const serialized = {
+function serializeConfig(config) {
+  return {
     server: {
       ...config.server,
     },
@@ -265,22 +245,6 @@ function serializeConfig(config, preservedModelTier) {
       serializeProvider(provider),
     ])),
   };
-
-  if (Array.isArray(preservedModelTier) && preservedModelTier.length > 0) {
-    serialized.modelTier = preservedModelTier;
-  }
-
-  return serialized;
-}
-
-async function loadPersistedModelTier(configPath) {
-  try {
-    const rawText = await fs.readFile(configPath, 'utf8');
-    const parsed = JSON.parse(rawText);
-    return Array.isArray(parsed?.modelTier) ? parsed.modelTier : null;
-  } catch {
-    return null;
-  }
 }
 
 function serializeProvider(provider) {

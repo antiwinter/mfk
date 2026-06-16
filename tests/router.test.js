@@ -35,12 +35,8 @@ function createDb(states = {}) {
   };
 }
 
-test('selectCandidates keeps exact model matches ahead of tier fallback', () => {
+test('selectCandidates returns the exact matching provider', () => {
   const config = {
-    modelTier: [
-      ['opus-4-6'],
-      ['sonnet-4-6', 'qwen3.5-plus'],
-    ],
     providers: [
       createProvider({ id: 'anthropic', order: 0, models: ['anthropic/claude-sonnet-4-6'] }),
       createProvider({ id: 'dashscope', order: 1, models: ['qwen3.5-plus'] }),
@@ -52,16 +48,10 @@ test('selectCandidates keeps exact model matches ahead of tier fallback', () => 
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].provider.id, 'dashscope');
   assert.equal(candidates[0].model, 'qwen3.5-plus');
-  assert.equal(candidates[0].tierDistance, 0);
 });
 
-test('selectCandidates ignores disabled_until while provider cooldowns are disabled', () => {
+test('selectCandidates skips providers whose key is in cooldown', () => {
   const config = {
-    modelTier: [
-      ['opus-4-6'],
-      ['sonnet-4-6', 'qwen3.5-plus'],
-      ['haiku-4-5'],
-    ],
     providers: [
       createProvider({ id: 'anthropic', order: 0, models: ['anthropic/claude-sonnet-4-6'] }),
       createProvider({ id: 'dashscope', order: 1, models: ['qwen3.5-plus'] }),
@@ -75,19 +65,11 @@ test('selectCandidates ignores disabled_until while provider cooldowns are disab
 
   const candidates = selectCandidates(config, db, { model: 'qwen3.5-plus' });
 
-  assert.equal(candidates.length, 1);
-  assert.equal(candidates[0].provider.id, 'dashscope');
-  assert.equal(candidates[0].model, 'qwen3.5-plus');
-  assert.equal(candidates[0].tierDistance, 0);
+  assert.equal(candidates.length, 0);
 });
 
-test('selectCandidates chooses the closest adjacent tier when no same-tier model is available', () => {
+test('selectCandidates returns no candidates when no exact model match exists', () => {
   const config = {
-    modelTier: [
-      ['opus-4-6'],
-      ['sonnet-4-6'],
-      ['haiku-4-5'],
-    ],
     providers: [
       createProvider({ id: 'stronger', order: 1, models: ['anthropic/claude-opus-4-6'] }),
       createProvider({ id: 'weaker', order: 0, models: ['anthropic/claude-haiku-4-5'] }),
@@ -96,12 +78,7 @@ test('selectCandidates chooses the closest adjacent tier when no same-tier model
 
   const candidates = selectCandidates(config, createDb(), { model: 'sonnet-4-6' });
 
-  assert.equal(candidates.length, 2);
-  assert.equal(candidates[0].provider.id, 'stronger');
-  assert.equal(candidates[0].model, 'anthropic/claude-opus-4-6');
-  assert.equal(candidates[0].tierDistance, 1);
-  assert.equal(candidates[1].provider.id, 'weaker');
-  assert.equal(candidates[1].tierDistance, 1);
+  assert.equal(candidates.length, 0);
 });
 
 test('selectCandidates does not cross-provider fallback when an explicit provider is requested', () => {
