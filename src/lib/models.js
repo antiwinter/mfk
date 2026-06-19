@@ -75,6 +75,15 @@ export function resolveProviderModel(provider, requestedModel) {
     }
   }
 
+  // Substring fallback: find a model whose name contains the requested string
+  if (requestedName) {
+    const substringMatch = (provider.models ?? []).find((model) => {
+      if (model === '*' || model.endsWith('/*')) return false;
+      return normalizeModelId(model).includes(requestedName);
+    });
+    if (substringMatch) return substringMatch;
+  }
+
   return null;
 }
 
