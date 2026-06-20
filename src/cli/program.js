@@ -11,6 +11,7 @@ import { registerRouteCommand } from './commands/route.js';
 import { registerServeCommand } from './commands/serve.js';
 import { registerTestCommand } from './commands/test.js';
 import { registerUpdateCommand } from './commands/update.js';
+import { registerLogsCommand, registerStartCommand, registerStopCommand, registerRestartCommand } from './commands/pm2.js';
 
 export function buildProgram() {
   const program = new Command();
@@ -31,6 +32,16 @@ export function buildProgram() {
   registerEnableCommand(program);
   registerRmCommand(program);
   registerRouteCommand(program);
+  registerLogsCommand(program);
+  registerStartCommand(program);
+  registerStopCommand(program);
+  registerRestartCommand(program);
+
+  // Default: run ls when no subcommand is given
+  program.action(async () => {
+    const lsCmd = program.commands.find(c => c.name() === 'ls');
+    await lsCmd.parseAsync([], { from: 'user' });
+  });
 
   // Move the help command into the Common section
   program.helpCommand(false);

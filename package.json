@@ -4,7 +4,8 @@
   "description": "Multi-provider LLM key router with local virtual keys",
   "type": "module",
   "bin": {
-    "mfk": "./src/index.js"
+    "mfk": "./src/index.js",
+    "mkf": "./src/index.js"
   },
   "scripts": {
     "start": "node ./src/index.js",
