@@ -37,12 +37,6 @@ export function buildProgram() {
   registerStopCommand(program);
   registerRestartCommand(program);
 
-  // Default: run ls when no subcommand is given
-  program.action(async () => {
-    const lsCmd = program.commands.find(c => c.name() === 'ls');
-    await lsCmd.parseAsync([], { from: 'user' });
-  });
-
   // Move the help command into the Common section
   program.helpCommand(false);
   program

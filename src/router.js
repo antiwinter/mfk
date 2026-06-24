@@ -229,7 +229,7 @@ export async function routePassthrough({
 
   try {
     const { url, headers } = buildFetch(inboundEngine, passthroughIr, candidate.provider, candidate.key);
-    const body = buildPassthroughBody(inboundEngine.type, rawBody, ir, selectedModel);
+    const body = buildPassthroughBody(inboundEngine.type, rawBody, selectedModel);
     const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
 
     if (!response.ok) {
@@ -373,19 +373,21 @@ async function readUpstreamBody(response) {
   return { rawText, body };
 }
 
-function buildPassthroughBody(engineType, rawBody, ir, selectedModel) {
+function buildPassthroughBody(engineType, rawBody, selectedModel) {
   const body = structuredClone(rawBody ?? {});
-  if (selectedModel === ir.model) {
-    return body;
-  }
 
   if (engineType === 'google') {
     return body;
   }
 
-  body.model = engineType === 'anthropic'
+  const targetModel = engineType === 'anthropic'
     ? normalizeModelId(selectedModel)
     : selectedModel;
+
+  if (body.model !== targetModel) {
+    body.model = targetModel;
+  }
+
   return body;
 }
 
