@@ -36,7 +36,7 @@ export function registerRmCommand(program) {
           selector === p.apiKey || selector === formatProviderKey(p.apiKey),
         );
         if (provider) {
-          config.providers = config.providers.filter((p) => p.id !== provider.id);
+          config.providers = config.providers.filter((p) => p.apiKey !== provider.apiKey);
           await saveConfig(configPath, config);
           console.log(`removed_provider_key: ${formatProviderKey(provider.apiKey)}`);
           console.log(`removed_provider_url: ${provider.baseUrl}`);

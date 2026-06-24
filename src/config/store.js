@@ -6,6 +6,8 @@ import { uniqueModels } from '../lib/http.js';
 const DEFAULT_QUOTA_RESET = 'daily';
 const DEFAULT_FAILURE_RESET = 'next_try';
 
+const API_TYPE_KEYS = ['anthropic', 'openai', 'google'];
+
 const DEFAULT_SERVER = {
   host: '127.0.0.1',
   port: 8787,
@@ -41,17 +43,24 @@ export function normalizeConfig(rawConfig) {
 }
 
 function normalizeProviders(rawProviders) {
+  let entries;
+
   if (Array.isArray(rawProviders)) {
-    return rawProviders.flatMap((provider, providerIndex) => normalizeArrayProvider(provider, providerIndex));
+    entries = rawProviders.flatMap((provider, providerIndex) => normalizeArrayProvider(provider, providerIndex));
+  } else if (!rawProviders || typeof rawProviders !== 'object') {
+    entries = [];
+  } else {
+    entries = Object.entries(rawProviders).flatMap(([apiKey, provider], providerIndex) =>
+      normalizeProviderEntry(apiKey, provider, providerIndex),
+    );
   }
 
-  if (!rawProviders || typeof rawProviders !== 'object') {
-    return [];
-  }
-
-  return Object.entries(rawProviders).map(([apiKey, provider], providerIndex) =>
-    normalizeProviderEntry(apiKey, provider, providerIndex),
-  );
+  return entries.map((provider, index) => ({
+    ...provider,
+    order: index,
+    priority: index,
+    key: { ...provider.key, priority: index },
+  }));
 }
 
 function normalizeArrayProvider(provider, providerIndex) {
@@ -107,33 +116,40 @@ function normalizeProviderEntry(apiKey, provider, providerIndex) {
     throw new Error(`Provider at index ${providerIndex} is missing an api key`);
   }
 
-  if (!provider?.type) {
-    throw new Error(`Provider ${maskApiKey(apiKey)} is missing a type`);
-  }
-
   const baseUrl = stripTrailingSlash(provider.url ?? provider.baseUrl ?? '');
   if (!baseUrl) {
     throw new Error(`Provider ${maskApiKey(apiKey)} is missing a url`);
   }
 
-  return buildRuntimeProvider({
-    apiKey,
-    baseUrl,
-    type: normalizeProviderType(provider.type),
-    quotaReset: provider.quotaReset,
-    failureReset: provider.failureReset,
-    models: provider.models,
-    order: providerIndex,
-  });
+  const typeEntries = API_TYPE_KEYS
+    .filter((type) => Array.isArray(provider[type]))
+    .map((type) => ({ type, models: provider[type] }));
+
+  if (typeEntries.length === 0) {
+    throw new Error(`Provider ${maskApiKey(apiKey)} must list models under at least one of: ${API_TYPE_KEYS.join(', ')}`);
+  }
+
+  return typeEntries.map(({ type, models }) =>
+    buildRuntimeProvider({
+      apiKey,
+      baseUrl,
+      type: normalizeProviderType(type),
+      quotaReset: provider.quotaReset,
+      failureReset: provider.failureReset,
+      models,
+      order: providerIndex,
+    }),
+  );
 }
 
 export function buildRuntimeProvider({ apiKey, baseUrl, type, quotaReset, failureReset, models, order }) {
-  const providerId = createProviderId(baseUrl, apiKey);
+  const normalizedType = normalizeProviderType(type);
+  const providerId = createProviderId(baseUrl, apiKey, normalizedType);
 
   return {
     id: providerId,
     apiKey,
-    type: normalizeProviderType(type),
+    type: normalizedType,
     baseUrl,
     order,
     priority: order,
@@ -233,6 +249,26 @@ export function formatProviderKey(apiKey) {
 }
 
 function serializeConfig(config) {
+  const byKey = new Map();
+
+  for (const provider of config.providers) {
+    let entry = byKey.get(provider.apiKey);
+    if (!entry) {
+      entry = { url: provider.baseUrl };
+      if (provider.quotaReset !== DEFAULT_QUOTA_RESET) {
+        entry.quotaReset = provider.quotaReset;
+      }
+      if (provider.failureReset !== DEFAULT_FAILURE_RESET) {
+        entry.failureReset = provider.failureReset;
+      }
+      byKey.set(provider.apiKey, entry);
+    }
+
+    const type = normalizeProviderType(provider.type);
+    const existingModels = entry[type] ?? [];
+    entry[type] = uniqueModels([...existingModels, ...provider.models]).sort(compareText);
+  }
+
   return {
     server: {
       ...config.server,
@@ -240,29 +276,8 @@ function serializeConfig(config) {
     database: {
       ...config.database,
     },
-    providers: Object.fromEntries(config.providers.map((provider) => [
-      provider.apiKey,
-      serializeProvider(provider),
-    ])),
+    providers: Object.fromEntries(byKey),
   };
-}
-
-function serializeProvider(provider) {
-  const serialized = {
-    url: provider.baseUrl,
-    type: normalizeProviderType(provider.type),
-    models: uniqueModels(provider.models).sort(compareText),
-  };
-
-  if (provider.quotaReset !== DEFAULT_QUOTA_RESET) {
-    serialized.quotaReset = provider.quotaReset;
-  }
-
-  if (provider.failureReset !== DEFAULT_FAILURE_RESET) {
-    serialized.failureReset = provider.failureReset;
-  }
-
-  return serialized;
 }
 
 function stripTrailingSlash(value) {
@@ -291,10 +306,10 @@ function compareText(left, right) {
   return left.localeCompare(right);
 }
 
-function createProviderId(baseUrl, apiKey) {
+function createProviderId(baseUrl, apiKey, type) {
   const host = new URL(baseUrl).host.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const suffix = apiKey.slice(-4).toLowerCase();
-  return `${host || 'provider'}-${suffix}`;
+  return `${host || 'provider'}-${type}-${suffix}`;
 }
 
 function maskApiKey(apiKey) {
