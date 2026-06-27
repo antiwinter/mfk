@@ -1,4 +1,5 @@
 import { openaiEngine } from './openai.js';
+import { openaiResponsesEngine } from './openaiResponses.js';
 import { anthropicEngine } from './anthropic.js';
 import { googleEngine } from './google.js';
 
@@ -17,10 +18,11 @@ export function getEngine(type) {
 }
 
 export function engineForPath(urlPath) {
+  if (urlPath.startsWith('/v1/responses')) return openaiResponsesEngine;
   if (urlPath.startsWith('/v1/messages')) return anthropicEngine;
   if (urlPath.startsWith('/v1/chat/completions')) return openaiEngine;
   if (urlPath.startsWith('/v1beta/')) return googleEngine;
   return null;
 }
 
-export { openaiEngine, anthropicEngine, googleEngine };
+export { openaiEngine, openaiResponsesEngine, anthropicEngine, googleEngine };

@@ -10,6 +10,11 @@ import { buildProviderUrl, readJsonError, requestJson, uniqueModels } from '../l
 
 export const googleEngine = {
   type: 'google',
+  apiStyle: 'google-genai',
+
+  canBypassTo(provider) {
+    return provider?.type === 'google';
+  },
 
   parseReq(body, params = {}) {
     // Google requests come in as { contents, generationConfig, systemInstruction }

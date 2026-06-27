@@ -12,6 +12,11 @@ const ANTHROPIC_VERSION = '2023-06-01';
 
 export const anthropicEngine = {
   type: 'anthropic',
+  apiStyle: 'messages',
+
+  canBypassTo(provider) {
+    return provider?.type === 'anthropic';
+  },
 
   parseReq(body) {
     const model = String(body.model ?? '').replace(/^anthropic\//, '');

@@ -25,6 +25,26 @@ function createAnthropicProvider() {
   };
 }
 
+function createOpenAiProvider() {
+  return {
+    id: 'openai-provider',
+    apiKey: 'sk-openai',
+    type: 'openai',
+    baseUrl: 'https://api.openai.example.com',
+    order: 0,
+    priority: 0,
+    quotaReset: 'daily',
+    failureReset: 'hourly',
+    headers: {},
+    models: ['gpt-4.1'],
+    key: {
+      name: 'openai-provider',
+      value: 'sk-openai',
+      priority: 0,
+    },
+  };
+}
+
 function createDb() {
   return {
     findVirtualKeyByToken(token) {
@@ -228,3 +248,209 @@ function requestHttp(url, options) {
     request.end(options.body);
   });
 }
+
+test('openai-responses inbound bypasses to upstream /v1/responses when provider is openai', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const captured = [];
+  const upstreamResponse = {
+    id: 'resp_test',
+    object: 'response',
+    model: 'gpt-4.1',
+    status: 'completed',
+    output: [
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'pong' }],
+      },
+    ],
+    usage: { input_tokens: 3, output_tokens: 1, total_tokens: 4 },
+  };
+
+  globalThis.fetch = async (url, options = {}) => {
+    captured.push({ url: String(url), options });
+    return new Response(JSON.stringify(upstreamResponse), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  const app = createServer({
+    config: {
+      providers: [createOpenAiProvider()],
+      modelTier: [],
+      server: {},
+      database: {},
+    },
+    db: createDb(),
+  });
+
+  t.after(async () => {
+    globalThis.fetch = originalFetch;
+    await app.close();
+  });
+
+  const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
+  const payload = {
+    model: 'gpt-4.1',
+    input: 'Reply with only the word "pong".',
+    instructions: 'be brief',
+  };
+  const response = await requestHttp(`${baseUrl}/v1/responses`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${VKEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(captured.length, 1);
+  assert.match(captured[0].url, /\/v1\/responses$/);
+
+  // Bypass forwards raw body bytes verbatim — including 'input' and 'instructions'.
+  const upstreamBody = JSON.parse(captured[0].options.body);
+  assert.equal(upstreamBody.model, 'gpt-4.1');
+  assert.equal(upstreamBody.input, 'Reply with only the word "pong".');
+  assert.equal(upstreamBody.instructions, 'be brief');
+
+  const clientBody = JSON.parse(response.body);
+  assert.equal(clientBody.object, 'response');
+  assert.equal(clientBody.output[0].content[0].text, 'pong');
+});
+
+test('openai-responses inbound converts to upstream /v1/messages when provider is anthropic', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const captured = [];
+  const upstreamResponse = {
+    id: 'msg_conv',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-sonnet-4-6',
+    content: [{ type: 'text', text: 'pong' }],
+    stop_reason: 'end_turn',
+    usage: { input_tokens: 4, output_tokens: 1 },
+  };
+
+  globalThis.fetch = async (url, options = {}) => {
+    captured.push({ url: String(url), options });
+    return new Response(JSON.stringify(upstreamResponse), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  const app = createServer({
+    config: {
+      providers: [createAnthropicProvider()],
+      modelTier: [],
+      server: {},
+      database: {},
+    },
+    db: createDb(),
+  });
+
+  t.after(async () => {
+    globalThis.fetch = originalFetch;
+    await app.close();
+  });
+
+  const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
+  const payload = {
+    model: 'claude-sonnet-4-6',
+    input: 'Reply with only the word "pong".',
+    instructions: 'be brief',
+  };
+  const response = await requestHttp(`${baseUrl}/v1/responses`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${VKEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(captured.length, 1);
+  assert.match(captured[0].url, /\/v1\/messages$/);
+
+  const upstreamBody = JSON.parse(captured[0].options.body);
+  assert.equal(upstreamBody.model, 'claude-sonnet-4-6');
+  assert.equal(upstreamBody.system, 'be brief');
+  assert.equal(Array.isArray(upstreamBody.messages), true);
+  assert.equal(upstreamBody.messages[0].role, 'user');
+});
+
+test('anthropic inbound converts to upstream /v1/responses when provider is openai', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const captured = [];
+  const upstreamResponse = {
+    id: 'resp_convert',
+    object: 'response',
+    model: 'gpt-4.1',
+    status: 'completed',
+    output: [
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'pong' }],
+      },
+    ],
+    usage: { input_tokens: 5, output_tokens: 1, total_tokens: 6 },
+  };
+
+  globalThis.fetch = async (url, options = {}) => {
+    captured.push({ url: String(url), options });
+    return new Response(JSON.stringify(upstreamResponse), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  const app = createServer({
+    config: {
+      providers: [createOpenAiProvider()],
+      modelTier: [],
+      server: {},
+      database: {},
+    },
+    db: createDb(),
+  });
+
+  t.after(async () => {
+    globalThis.fetch = originalFetch;
+    await app.close();
+  });
+
+  const baseUrl = await app.listen({ host: '127.0.0.1', port: 0 });
+  const response = await requestHttp(`${baseUrl}/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'x-api-key': VKEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4.1',
+      system: 'be brief',
+      messages: [{ role: 'user', content: 'Reply with only the word "pong".' }],
+      max_tokens: 32,
+    }),
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(captured.length, 1);
+  assert.match(captured[0].url, /\/v1\/responses$/);
+
+  const upstreamBody = JSON.parse(captured[0].options.body);
+  assert.equal(upstreamBody.model, 'gpt-4.1');
+  assert.equal(upstreamBody.instructions, 'be brief');
+  assert.equal(Array.isArray(upstreamBody.input), true);
+  assert.equal(upstreamBody.input[0].role, 'user');
+
+  // Inbound shape is preserved on the wire back to the client.
+  const clientBody = JSON.parse(response.body);
+  assert.equal(clientBody.type, 'message');
+  assert.equal(clientBody.content[0].text, 'pong');
+});

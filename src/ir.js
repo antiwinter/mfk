@@ -1,7 +1,18 @@
 // Intermediate Representation for LLM requests and responses.
 // All engines convert their wire formats to/from these shapes.
 
-export function createIR({ model, messages, temperature, maxTokens, stream, provider }) {
+export function createIR({
+  model,
+  messages,
+  temperature,
+  maxTokens,
+  stream,
+  provider,
+  instructions,
+  inputItems,
+  tools,
+  previousResponseId,
+}) {
   return {
     model: model ?? '',
     messages: Array.isArray(messages)
@@ -14,6 +25,10 @@ export function createIR({ model, messages, temperature, maxTokens, stream, prov
     maxTokens,
     stream: Boolean(stream),
     provider,
+    instructions: instructions ?? null,
+    inputItems: Array.isArray(inputItems) ? inputItems : null,
+    tools: Array.isArray(tools) ? tools : null,
+    previousResponseId: previousResponseId ?? null,
   };
 }
 
@@ -101,6 +116,10 @@ function normalizeMessagePart(part) {
     return { type: 'text', text: part.text ?? '' };
   }
 
+  if (part.type === 'input_text' && typeof part.text === 'string') {
+    return { type: 'text', text: part.text };
+  }
+
   if (part.type === 'image' && part.data) {
     return {
       type: 'image',
@@ -115,6 +134,10 @@ function normalizeMessagePart(part) {
       mediaType: part.source.media_type ?? part.source.mediaType ?? 'image/png',
       data: part.source.data,
     };
+  }
+
+  if (part.type === 'input_image' && typeof part.image_url === 'string') {
+    return normalizeImageUrl(part.image_url);
   }
 
   if (part.type === 'image_url' && part.image_url?.url) {

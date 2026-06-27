@@ -1,13 +1,14 @@
 import { Readable } from 'node:stream';
 import { finished } from 'node:stream/promises';
 import { normalizeRequestLogRecord } from './db/client.js';
-import { getEngine } from './engines/index.js';
+import { getEngine, openaiResponsesEngine } from './engines/index.js';
 import { collectEvents } from './ir.js';
 import { buildProviderUrl, createUpstreamError } from './lib/http.js';
 import { emitError, emitRequest, emitResponse, finalize, extractPromptText } from './lib/dump.js';
 import { isCooldownActive, computeNextBoundary } from './lib/time.js';
 import { normalizeModelId, resolveProviderModel } from './lib/models.js';
 import { formatProviderKey } from './config/store.js';
+import { irFromMessagesToResponses, irFromResponsesToMessages } from './lib/responsesConvert.js';
 
 export async function route({ config, db, ir, inboundEngine, virtualKey, dump, onRequestLog }) {
   const candidates = selectCandidates(config, db, ir);
@@ -48,8 +49,8 @@ export async function route({ config, db, ir, inboundEngine, virtualKey, dump, o
   const startedAt = Date.now();
 
   try {
-    const outboundEngine = getEngine(candidate.provider.type);
-    const routedIr = candidate.model === ir.model ? ir : { ...ir, model: candidate.model };
+    const outboundEngine = pickOutboundEngine(candidate.provider, inboundEngine);
+    const routedIr = convertIrForOutbound(ir, candidate.model, inboundEngine, outboundEngine);
     const promptText = extractPromptText(routedIr);
     emitRequest(dump, {
       requestedModel: ir.model,
@@ -136,10 +137,11 @@ export async function routeStream({ config, db, ir, reply, inboundEngine, virtua
   const startedAt = Date.now();
 
   try {
-    const outboundEngine = getEngine(candidate.provider.type);
-    const streamIr = candidate.model === ir.model
-      ? { ...ir, stream: true }
-      : { ...ir, model: candidate.model, stream: true };
+    const outboundEngine = pickOutboundEngine(candidate.provider, inboundEngine);
+    const streamBase = candidate.model === ir.model
+      ? ir
+      : { ...ir, model: candidate.model };
+    const streamIr = convertIrForOutbound(streamBase, candidate.model, inboundEngine, outboundEngine, true);
     const promptText = extractPromptText(streamIr);
     emitRequest(dump, {
       requestedModel: ir.model,
@@ -325,6 +327,56 @@ function buildFetch(engine, ir, provider, key) {
   const url = buildProviderUrl(provider.baseUrl, engine.endpoint(ir, key));
   const headers = engine.buildHeaders(provider, key);
   return { url, headers };
+}
+
+function convertIrForOutbound(ir, selectedModel, inboundEngine, outboundEngine, stream = false) {
+  const modelAdjusted = selectedModel === ir.model ? ir : { ...ir, model: selectedModel };
+  const withStream = stream ? { ...modelAdjusted, stream: true } : modelAdjusted;
+
+  // Same engine — passthrough would have caught this; no conversion needed.
+  if (inboundEngine === outboundEngine) {
+    return withStream;
+  }
+
+  // Same provider type, different API style:
+  if (inboundEngine.type === outboundEngine.type) {
+    if (inboundEngine.apiStyle === 'responses' && outboundEngine.apiStyle === 'chat-completions') {
+      return irFromResponsesToMessages(withStream);
+    }
+    if (inboundEngine.apiStyle === 'chat-completions' && outboundEngine.apiStyle === 'responses') {
+      return irFromMessagesToResponses(withStream);
+    }
+  }
+
+  // Different provider types: choose the matching openai-style engine when the
+  // outbound is openai. The matrix is "inbound style wins": /v1/messages →
+  // openai provider must hit /v1/responses, not /v1/chat/completions.
+  if (inboundEngine.apiStyle === 'responses' && outboundEngine.apiStyle === 'messages') {
+    return irFromResponsesToMessages(withStream);
+  }
+  if (inboundEngine.apiStyle === 'messages' && outboundEngine.apiStyle === 'responses') {
+    return irFromMessagesToResponses(withStream);
+  }
+
+  return withStream;
+}
+
+// Pick the engine that emits the right wire shape for this provider, given the
+// inbound style. The "openai" provider has two engines (chat-completions and
+// responses); inbound style wins, so:
+//   inbound chat-completions → openai chat-completions engine
+//   inbound responses        → openai responses engine
+//   inbound messages         → openai responses engine (per the user's matrix:
+//                             /v1/messages → openai must hit /v1/responses)
+export function pickOutboundEngine(provider, inboundEngine) {
+  if (provider.type !== 'openai') {
+    return getEngine(provider.type);
+  }
+
+  if (inboundEngine.apiStyle === 'chat-completions') {
+    return getEngine('openai');
+  }
+  return openaiResponsesEngine;
 }
 
 async function* captureFinalMessage(eventStream, onMessage) {

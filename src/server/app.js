@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { createDump, emitError, emitRequest, finalize, extractPromptText } from '../lib/dump.js';
 import { extractVirtualKeyToken } from '../lib/virtualKey.js';
-import { openaiEngine, anthropicEngine, googleEngine } from '../engines/index.js';
+import { openaiEngine, openaiResponsesEngine, anthropicEngine, googleEngine } from '../engines/index.js';
 import { getCapabilityModels, getCapabilityModelInfos } from '../lib/models.js';
 import { route, routePassthrough, routeStream, selectCandidates } from '../router.js';
 
@@ -68,6 +68,14 @@ export function createServer({ config, db, dump = false, dumpWrite, onRequestLog
 
   app.post('/v1/chat/completions', async (request, reply) => {
     return handleCompletion(request, reply, openaiEngine, config, db, null, {
+      dump,
+      dumpWrite: dumpLineWriter,
+      onRequestLog,
+    });
+  });
+
+  app.post('/v1/responses', async (request, reply) => {
+    return handleCompletion(request, reply, openaiResponsesEngine, config, db, null, {
       dump,
       dumpWrite: dumpLineWriter,
       onRequestLog,
@@ -166,7 +174,7 @@ async function handleCompletion(request, reply, inboundEngine, config, db, parse
     const candidates = selectCandidates(config, db, ir);
     const candidate = candidates[0] ?? null;
 
-    if (candidate?.provider.type === inboundEngine.type) {
+    if (candidate && inboundEngine.canBypassTo(candidate.provider)) {
       return await routePassthrough({
         candidate,
         db,

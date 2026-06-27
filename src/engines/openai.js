@@ -3,6 +3,11 @@ import { buildProviderUrl, requestJson, readJsonError, uniqueModels } from '../l
 
 export const openaiEngine = {
   type: 'openai',
+  apiStyle: 'chat-completions',
+
+  canBypassTo(provider) {
+    return provider?.type === 'openai';
+  },
 
   parseReq(body) {
     return createIR({
