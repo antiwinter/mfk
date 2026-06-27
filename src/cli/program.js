@@ -11,6 +11,7 @@ import { registerRouteCommand } from './commands/route.js';
 import { registerServeCommand } from './commands/serve.js';
 import { registerTestCommand } from './commands/test.js';
 import { registerUpdateCommand } from './commands/update.js';
+import { registerWireCommand } from './commands/wire.js';
 import { registerLogsCommand, registerStartCommand, registerStopCommand, registerRestartCommand } from './commands/pm2.js';
 
 export function buildProgram() {
@@ -32,6 +33,7 @@ export function buildProgram() {
   registerEnableCommand(program);
   registerRmCommand(program);
   registerRouteCommand(program);
+  registerWireCommand(program);
   registerLogsCommand(program);
   registerStartCommand(program);
   registerStopCommand(program);

@@ -34,4 +34,9 @@ function injectLs(argv, commandNames) {
 
 const program = buildProgram();
 const commandNames = new Set(program.commands.flatMap(c => [c.name(), ...c.aliases()]));
-await program.parseAsync(injectLs(process.argv, commandNames));
+try {
+  await program.parseAsync(injectLs(process.argv, commandNames));
+} catch (err) {
+  console.error(`error: ${err.message}`);
+  process.exit(1);
+}
