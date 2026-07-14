@@ -12,6 +12,7 @@ import { registerServeCommand } from './commands/serve.js';
 import { registerTestCommand } from './commands/test.js';
 import { registerUpdateCommand } from './commands/update.js';
 import { registerWireCommand } from './commands/wire.js';
+import { registerWireOmpCommand } from './commands/wire-omp.js';
 import { registerLogsCommand, registerStartCommand, registerStopCommand, registerRestartCommand } from './commands/pm2.js';
 
 export function buildProgram() {
@@ -34,6 +35,7 @@ export function buildProgram() {
   registerRmCommand(program);
   registerRouteCommand(program);
   registerWireCommand(program);
+  registerWireOmpCommand(program);
   registerLogsCommand(program);
   registerStartCommand(program);
   registerStopCommand(program);

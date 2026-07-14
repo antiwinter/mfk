@@ -9,7 +9,7 @@ export function registerWireCommand(program) {
   program
     .command('wire')
     .helpGroup('Common')
-    .description('Point CLI tools (Claude Code, Codex, shell env) at the mfk service via their own config')
+    .description('Point CLI tools (Claude Code, Codex, shell env, omp) at the mfk service via their own config')
     .option('--url <base>', 'Target mfk base URL (defaults to the local server from config)')
     .option('--key <alias|mfk-xxx>', 'Virtual key: an alias resolved locally, or a literal mfk- token. Required when wiring any tool on')
     .action(async (options) => {
@@ -19,14 +19,14 @@ export function registerWireCommand(program) {
       const db = createDatabase(dbPath);
 
       try {
-        await runWire(config, db, options);
+        await runWire(configPath, config, db, options);
       } finally {
         db.close();
       }
     });
 }
 
-async function runWire(config, db, options) {
+async function runWire(configPath, config, db, options) {
   const baseUrl = resolveBaseUrl(config, options.url);
 
   if (!process.stdin.isTTY) {
@@ -70,7 +70,7 @@ async function runWire(config, db, options) {
 
   for (const { tool, action } of changes) {
     const summary = action === 'wire'
-      ? tool.wire({ baseUrl, virtualKey })
+      ? await tool.wire({ baseUrl, virtualKey, configPath })
       : tool.clear();
     console.log(`${tool.label}: ${summary}`);
   }

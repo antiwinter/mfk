@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { loadConfig } from '../../config/store.js';
+import { applyOmpModelsYml, clearOmpModelsYml, detectOmpWired, generateOmpModelsYml, renderOmpModelsYml } from './omp.js';
 
 const BLOCK_START = '# >>> mfk wire >>>';
 const BLOCK_END = '# <<< mfk wire <<<';
@@ -236,7 +238,35 @@ const shellEnv = {
   },
 };
 
-export const TOOLS = [claudeCode, codex, shellEnv];
+// omp is wired by translating mfk's config.json into ~/.omp/agent/models.yml.
+// omp talks to upstreams directly, so it ignores the mfk baseUrl/virtualKey.
+const omp = {
+  id: 'omp',
+  label: 'OMP',
+  description: '~/.omp/agent/models.yml — providers/models translated from mfk config',
+  detect() {
+    return detectOmpWired();
+  },
+  async wire({ configPath }) {
+    const { config } = await loadConfig(configPath);
+    const body = generateOmpModelsYml({ config });
+    const yaml = renderOmpModelsYml(body);
+    const result = applyOmpModelsYml({ body: yaml.trimEnd() });
+    if (result.action === 'wrote') {
+      return `wrote ${result.path}`;
+    }
+    return `${result.action}: ${result.path}`;
+  },
+  clear() {
+    const result = clearOmpModelsYml();
+    if (result.action === 'cleared') {
+      return `cleared ${result.path}`;
+    }
+    return result.action;
+  },
+};
+
+export const TOOLS = [claudeCode, codex, shellEnv, omp];
 
 export function getTool(id) {
   return TOOLS.find((tool) => tool.id === id) ?? null;
