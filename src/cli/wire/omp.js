@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { normalizeModelId } from '../../lib/models.js';
+import { lookupModelInfo } from '../../lib/modelInfo.js';
 
 const BLOCK_START = '# >>> mfk wire omp >>>';
 const BLOCK_END = '# <<< mfk wire omp <<<';
@@ -23,11 +24,24 @@ function isWildcard(model) {
   return model === '*' || model.endsWith('/*');
 }
 
+function domainPrefix(baseUrl) {
+  let host = '';
+  try {
+    host = new URL(String(baseUrl ?? '')).hostname;
+  } catch {
+    host = '';
+  }
+  if (!host) return 'nohost';
+  // Registrable domain: keep the last two labels (e.g. api.intchains.in → intchains.in).
+  const labels = host.split('.').filter(Boolean);
+  const domain = labels.length >= 2 ? labels.slice(-2).join('.') : host;
+  return domain.toLowerCase();
+}
+
 function buildProviderId(provider, type) {
-  const tail = String(provider.apiKey ?? '').replace(/[^a-zA-Z0-9]+/g, '').slice(-4).toLowerCase()
-    || 'nokey';
+  const prefix = domainPrefix(provider.baseUrl);
   const orderPad = String(provider.order ?? 0).padStart(2, '0');
-  return `mfk-${tail}-${type}-${orderPad}`;
+  return `${prefix}-${type}-${orderPad}`;
 }
 
 function quoteYamlString(value) {
@@ -38,6 +52,14 @@ function quoteYamlString(value) {
     return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   }
   return str;
+}
+
+function renderCost(cost) {
+  const order = ['input', 'output', 'cacheRead', 'cacheWrite'];
+  const parts = order
+    .filter((key) => Number.isFinite(cost[key]))
+    .map((key) => `${key}: ${cost[key]}`);
+  return `{ ${parts.join(', ')} }`;
 }
 
 function renderProviderBody(providerId, provider, models) {
@@ -56,6 +78,16 @@ function renderProviderBody(providerId, provider, models) {
       lines.push(`      - id: ${quoteYamlString(model.id)}`);
       if (model.name) lines.push(`        name: ${quoteYamlString(model.name)}`);
       if (model.reasoning) lines.push(`        reasoning: true`);
+      if (Array.isArray(model.input) && model.input.length) {
+        lines.push(`        input: [${model.input.join(', ')}]`);
+      }
+      if (Number.isFinite(model.contextWindow)) {
+        lines.push(`        contextWindow: ${model.contextWindow}`);
+      }
+      if (Number.isFinite(model.maxTokens)) {
+        lines.push(`        maxTokens: ${model.maxTokens}`);
+      }
+      if (model.cost) lines.push(`        cost: ${renderCost(model.cost)}`);
     }
   }
   return lines.join('\n');
@@ -76,7 +108,16 @@ export function generateOmpModelsYml({ config }) {
       if (!id || id.includes('/')) continue;
       if (seen.has(id)) continue;
       seen.add(id);
-      models.push({ id, name: id, reasoning: looksReasoning(id) });
+      const info = lookupModelInfo(id);
+      models.push({
+        id,
+        name: info?.name ?? id,
+        reasoning: info?.reasoning ?? looksReasoning(id),
+        input: info?.input,
+        contextWindow: info?.contextWindow,
+        maxTokens: info?.maxTokens,
+        cost: info?.cost,
+      });
     }
 
     const providerId = buildProviderId(provider, provider.type);

@@ -44,9 +44,9 @@ test('generateOmpModelsYml emits one provider per (mfk provider, type)', () => {
   const yaml = renderOmpModelsYml(body);
 
   assert.match(yaml, /^providers:\n/, 'starts with providers map');
-  assert.match(yaml, /mfk-akey-anthropic-00:/, 'first provider is mfk-akey-...-anthropic with key tail');
-  assert.match(yaml, /mfk-okey-openai-01:/, 'second is openai with orderPad 01');
-  assert.match(yaml, /mfk-gkey-google-02:/, 'third is google with orderPad 02');
+  assert.match(yaml, /example\.com-anthropic-00:/, 'first provider is domain-anthropic with orderPad 00');
+  assert.match(yaml, /example\.com-openai-01:/, 'second is openai with orderPad 01');
+  assert.match(yaml, /example\.com-google-02:/, 'third is google with orderPad 02');
   assert.match(yaml, /api: anthropic-messages/, 'translates anthropic type');
   assert.match(yaml, /api: openai-responses/, 'translates openai type');
   assert.match(yaml, /api: google-generative-ai/, 'translates google type');
@@ -94,8 +94,8 @@ test('generateOmpModelsYml produces one omp provider per type for multi-typed pr
 
   const yaml = renderOmpModelsYml(generateOmpModelsYml({ config }));
 
-  assert.match(yaml, /mfk-ulti-anthropic-00:/, 'anthropic variant from order 0');
-  assert.match(yaml, /mfk-ulti-openai-01:/, 'openai variant from order 1');
+  assert.match(yaml, /example\.com-anthropic-00:/, 'anthropic variant from order 0');
+  assert.match(yaml, /example\.com-openai-01:/, 'openai variant from order 1');
   assert.match(yaml, /api: anthropic-messages/);
   assert.match(yaml, /api: openai-responses/);
 });
@@ -122,8 +122,49 @@ test('generateOmpModelsYml sets reasoning:true on opus and thinking variants', (
 
   assert.match(byId['claude-opus-4-7'], /reasoning: true/, 'opus gets reasoning flag');
   assert.match(byId['claude-opus-4-7-thinking'], /reasoning: true/, 'opus-thinking gets reasoning flag');
-  assert.doesNotMatch(byId['claude-sonnet-4-6'] ?? '', /reasoning/, 'sonnet does not');
-  assert.doesNotMatch(byId['plain-model'] ?? '', /reasoning/, 'plain model does not');
+  assert.doesNotMatch(byId['plain-model'] ?? '', /reasoning/, 'unknown plain model has no catalog reasoning flag');
+});
+
+test('generateOmpModelsYml attaches catalog metadata to matched models', () => {
+  const config = makeConfig([
+    mkProvider({ id: 'a', apiKey: 'sk-AKEY', type: 'anthropic', baseUrl: 'https://a.example.com', order: 0, models: [
+      'claude-sonnet-4-6',
+      'gpt-5.6-sol',
+    ] }),
+  ]);
+
+  const yaml = renderOmpModelsYml(generateOmpModelsYml({ config }));
+
+  const blocks = yaml.split('\n      - id: ').slice(1);
+  const byId = Object.fromEntries(blocks.map((block) => {
+    const [id, ...rest] = block.split('\n');
+    return [id, rest.join('\n')];
+  }));
+
+  // Exact catalog hit.
+  assert.match(byId['claude-sonnet-4-6'], /input: \[text, image\]/);
+  assert.match(byId['claude-sonnet-4-6'], /contextWindow: 200000/);
+  assert.match(byId['claude-sonnet-4-6'], /maxTokens: 64000/);
+  assert.match(byId['claude-sonnet-4-6'], /cost: \{ input: 3, output: 15, cacheRead: 0\.3, cacheWrite: 3\.75 \}/);
+
+  // Fuzzy hit: gpt-5.6-sol resolves to the gpt-5.6 catalog entry, keeps its own id.
+  assert.match(byId['gpt-5.6-sol'], /name: GPT-5\.6/);
+  assert.match(byId['gpt-5.6-sol'], /contextWindow: 400000/);
+});
+
+test('generateOmpModelsYml omits catalog extras for unmatched models', () => {
+  const config = makeConfig([
+    mkProvider({ id: 'a', apiKey: 'sk-AKEY', type: 'anthropic', baseUrl: 'https://a.example.com', order: 0, models: [
+      'totally-unknown-model-xyz',
+    ] }),
+  ]);
+
+  const yaml = renderOmpModelsYml(generateOmpModelsYml({ config }));
+
+  assert.match(yaml, /id: totally-unknown-model-xyz/);
+  assert.doesNotMatch(yaml, /contextWindow:/);
+  assert.doesNotMatch(yaml, /cost:/);
+  assert.doesNotMatch(yaml, /input:/);
 });
 
 test('generateOmpModelsYml skips providers with missing apiKey or baseUrl', () => {
